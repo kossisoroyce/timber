@@ -1,0 +1,12 @@
+[target]
+arch = "x86_64"
+features = ["avx512f", "avx512bw", "avx512vl"]
+os = "linux"
+abi = "systemv"
+
+[precision]
+mode = "float32"
+
+[output]
+format = "c_source"
+strip_symbols = true

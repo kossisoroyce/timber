@@ -1,0 +1,12 @@
+[target]
+arch = "arm64"
+features = ["neon"]
+os = "linux"
+abi = "aapcs"
+
+[precision]
+mode = "float32"
+
+[output]
+format = "c_source"
+strip_symbols = false

@@ -1,0 +1,5 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include timber *.py py.typed
+recursive-include targets *.toml

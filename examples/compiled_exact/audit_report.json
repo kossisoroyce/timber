@@ -1,0 +1,44 @@
+{
+  "timber_audit_report_version": "0.1",
+  "input": {
+    "artifact_hash_sha256": "208cea2928743158974b756b0aa758634fa9dd1e9ba6abab764dad183a2f6264",
+    "artifact_path": "examples/breast_cancer_model.json",
+    "format": "xgboost"
+  },
+  "compiler": {
+    "timber_version": "0.1.0",
+    "target_spec": {},
+    "compiled_at": "2026-02-27T21:14:53.462570+00:00",
+    "deterministic": true
+  },
+  "model_summary": {
+    "n_stages": 1,
+    "stages": [
+      "tree_ensemble"
+    ],
+    "n_input_features": 30,
+    "n_outputs": 1,
+    "source_framework": "xgboost",
+    "n_trees": 50,
+    "max_depth": 4,
+    "n_features": 30,
+    "objective": "binary:logistic",
+    "n_classes": 2,
+    "total_nodes": 776,
+    "total_leaves": 413
+  },
+  "optimization": {},
+  "pruning_summary": {},
+  "quantization_decisions": {},
+  "calibration_stats": {},
+  "output": {
+    "artifact_hash_sha256": "e65e093ec40c470bae324b90a1c5385ab4f86620dba9ea2b89f8c75b500f46bd",
+    "files": [
+      "examples/compiled_exact/model.c",
+      "examples/compiled_exact/model.h",
+      "examples/compiled_exact/model_data.c",
+      "examples/compiled_exact/CMakeLists.txt",
+      "examples/compiled_exact/Makefile"
+    ]
+  }
+}

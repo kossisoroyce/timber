@@ -1,0 +1,12 @@
+[target]
+arch = "x86_64"
+features = []
+os = "linux"
+abi = "systemv"
+
+[precision]
+mode = "float32"
+
+[output]
+format = "c_source"
+strip_symbols = false

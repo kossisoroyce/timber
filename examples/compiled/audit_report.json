@@ -1,0 +1,163 @@
+{
+  "timber_audit_report_version": "0.1",
+  "input": {
+    "artifact_hash_sha256": "208cea2928743158974b756b0aa758634fa9dd1e9ba6abab764dad183a2f6264",
+    "artifact_path": "examples/breast_cancer_model.json",
+    "format": "xgboost"
+  },
+  "compiler": {
+    "timber_version": "0.1.0",
+    "target_spec": {},
+    "compiled_at": "2026-02-27T20:30:19.475491+00:00",
+    "deterministic": true
+  },
+  "model_summary": {
+    "n_stages": 1,
+    "stages": [
+      "tree_ensemble"
+    ],
+    "n_input_features": 30,
+    "n_outputs": 1,
+    "source_framework": "xgboost",
+    "n_trees": 50,
+    "max_depth": 4,
+    "n_features": 30,
+    "objective": "binary:logistic",
+    "n_classes": 2,
+    "total_nodes": 776,
+    "total_leaves": 414
+  },
+  "optimization": {
+    "total_passes": 4,
+    "passes_applied": 2,
+    "total_duration_ms": 3.05,
+    "pass_details": [
+      {
+        "name": "dead_leaf_elimination",
+        "changed": true,
+        "duration_ms": 0.58,
+        "details": {
+          "threshold": 0.001,
+          "max_leaf_value": 0.25256354,
+          "cutoff": 0.00025256354,
+          "leaves_pruned": 1,
+          "trees_modified": 1
+        }
+      },
+      {
+        "name": "constant_feature_detection",
+        "changed": false,
+        "duration_ms": 0.23,
+        "details": {
+          "nodes_folded": 0,
+          "features_with_folds": []
+        }
+      },
+      {
+        "name": "threshold_quantization",
+        "changed": true,
+        "duration_ms": 2.19,
+        "details": {
+          "features_analyzed": 30,
+          "int8_features": [],
+          "float16_features": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29
+          ],
+          "float32_features": []
+        }
+      },
+      {
+        "name": "pipeline_fusion",
+        "changed": false,
+        "duration_ms": 0.0,
+        "details": {
+          "skipped": "fewer than 2 pipeline stages"
+        }
+      }
+    ]
+  },
+  "pruning_summary": {
+    "threshold": 0.001,
+    "max_leaf_value": 0.25256354,
+    "cutoff": 0.00025256354,
+    "leaves_pruned": 1,
+    "trees_modified": 1
+  },
+  "quantization_decisions": {
+    "features_analyzed": 30,
+    "int8_features": [],
+    "float16_features": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29
+    ],
+    "float32_features": []
+  },
+  "calibration_stats": {},
+  "output": {
+    "artifact_hash_sha256": "a1feadf36eb8ca52cdd8d417e11cc648aae214bdffaaedb2b711a69b85ba4ea6",
+    "files": [
+      "examples/compiled/model.c",
+      "examples/compiled/model.h",
+      "examples/compiled/model_data.c",
+      "examples/compiled/CMakeLists.txt",
+      "examples/compiled/Makefile"
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing / benchmarks
+.pytest_cache/
+.benchmarks/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.blg
+paper/*.bbl
+
+# Compiled model artifacts (user-specific)
+~/.timber/
+
+# Word doc (not source)
+*.docx
+
+# Compiled binaries in examples
+examples/compiled/timber_bench
+examples/compiled/timber_infer
+examples/compiled_exact/timber_infer
+examples/**//*.so
+examples/**//*.dylib
+examples/**//*.dll
+examples/**//*.o
