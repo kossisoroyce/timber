@@ -48,8 +48,16 @@ def _coerce_float(val: Any) -> float:
         except Exception:
             pass
     if isinstance(val, (list, tuple)) and val:
-        return _coerce_float(val[0])
-    raise ValueError(f"Cannot coerce value to float: {val!r}")
+        # Find first convertible element
+        for el in val:
+            try:
+                return _coerce_float(el)
+            except Exception:
+                continue
+    try:
+        return float(str(val).strip("[] "))
+    except Exception:
+        raise ValueError(f"Cannot coerce value to float: {val!r}")
 
 
 def parse_xgboost_json(path: str | Path) -> TimberIR:
@@ -83,7 +91,7 @@ def _parse_xgboost_dict(data: dict[str, Any], artifact_hash: str = "") -> Timber
     learner_params = learner.get("learner_model_param", {})
     n_features = int(learner_params.get("num_feature", 0))
     n_classes = int(learner_params.get("num_class", 0))
-    base_score_raw = float(learner_params.get("base_score", 0.5))
+    base_score_raw = _coerce_float(learner_params.get("base_score", 0.5))
 
     # Objective
     obj_info = learner.get("objective", {})
@@ -144,7 +152,7 @@ def _parse_xgboost_dict(data: dict[str, Any], artifact_hash: str = "") -> Timber
         training_params.update(learner["learner_train_param"])
 
     # Determine learning rate
-    learning_rate = float(training_params.get("learning_rate",
+    learning_rate = _coerce_float(training_params.get("learning_rate",
                           learner_params.get("learning_rate", 0.3)))
 
     ensemble = TreeEnsembleStage(
@@ -194,17 +202,21 @@ def _parse_single_tree(raw: dict[str, Any], tree_id: int) -> Tree:
 
     nodes: list[TreeNode] = []
     for i in range(n_nodes):
-        is_leaf = left_children[i] == -1
+        lc_raw = left_children[i]
+        rc_raw = right_children[i]
+        lc = int(lc_raw) if isinstance(lc_raw, str) else lc_raw
+        rc = int(rc_raw) if isinstance(rc_raw, str) else rc_raw
+        is_leaf = lc == -1
         node = TreeNode(
             node_id=i,
             feature_index=split_indices[i] if not is_leaf else -1,
             threshold=_coerce_float(split_conditions[i]) if not is_leaf else 0.0,
-            left_child=left_children[i] if not is_leaf else -1,
-            right_child=right_children[i] if not is_leaf else -1,
+            left_child=lc if not is_leaf else -1,
+            right_child=rc if not is_leaf else -1,
             is_leaf=is_leaf,
             leaf_value=_coerce_float(split_conditions[i]) if is_leaf else 0.0,
             depth=0,  # computed below
-            default_left=bool(default_left_arr[i]) if i < len(default_left_arr) else True,
+            default_left=bool(int(default_left_arr[i])) if i < len(default_left_arr) else True,
         )
         nodes.append(node)
 
