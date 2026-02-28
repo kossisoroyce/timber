@@ -47,6 +47,12 @@ paper/*.bbl
 # Word doc (not source)
 *.docx
 
+# Docusaurus / website
+website/node_modules/
+website/build/
+website/.docusaurus/
+website/.cache-loader/
+
 # Compiled binaries in examples
 examples/compiled/timber_bench
 examples/compiled/timber_infer
