@@ -15,8 +15,10 @@ authors = [
 keywords = ["ml", "compiler", "inference", "xgboost", "lightgbm", "sklearn"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Compilers",
     "Programming Language :: Python :: 3",
@@ -34,10 +36,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/timber-compiler/timber"
-Documentation = "https://github.com/timber-compiler/timber#readme"
-Repository = "https://github.com/timber-compiler/timber"
-Issues = "https://github.com/timber-compiler/timber/issues"
+Homepage = "https://github.com/kossisoroyce/timber"
+Documentation = "https://kossisoroyce.github.io/timber/"
+Repository = "https://github.com/kossisoroyce/timber"
+Issues = "https://github.com/kossisoroyce/timber/issues"
 
 [project.optional-dependencies]
 dev = [

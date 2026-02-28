@@ -5,6 +5,7 @@ const sidebars: SidebarsConfig = {
     'intro',
     'getting-started',
     'how-it-works',
+    'benchmarks',
     {
       type: 'category',
       label: 'Guides',

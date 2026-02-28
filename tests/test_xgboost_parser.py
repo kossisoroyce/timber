@@ -142,3 +142,41 @@ class TestXGBoostParser:
 
         ensemble = ir.get_tree_ensemble()
         assert ensemble.base_score == pytest.approx(0.25)
+
+    def test_parse_legacy_nodes_tree_format(self):
+        # Older/alternate XGBoost JSON exports can represent trees via a "nodes" array.
+        data = {
+            "learner": {
+                "learner_model_param": {
+                    "num_feature": "2",
+                    "num_class": "0",
+                    "base_score": "0.5",
+                },
+                "gradient_booster": {
+                    "model": {
+                        "gbtree_model_param": {"num_trees": "1"},
+                        "tree_info": [0],
+                        "trees": [
+                            {
+                                "nodes": [
+                                    {"split": 0, "split_condition": 0.25, "yes": 1, "no": 2, "missing": 1},
+                                    {"leaf": -0.4},
+                                    {"leaf": 0.7},
+                                ]
+                            }
+                        ],
+                    }
+                },
+                "objective": {"name": "binary:logistic"},
+            },
+            "version": [1, 7, 0],
+        }
+
+        ir = _parse_xgboost_dict(data)
+        ensemble = ir.get_tree_ensemble()
+
+        assert ensemble is not None
+        assert ensemble.n_trees == 1
+        assert ensemble.objective == Objective.BINARY_CLASSIFICATION
+        assert ensemble.trees[0].n_internal == 1
+        assert ensemble.trees[0].n_leaves == 2

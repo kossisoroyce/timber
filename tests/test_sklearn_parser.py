@@ -133,3 +133,23 @@ class TestSklearnPipeline:
         assert len(ir.pipeline) == 2
         assert ir.pipeline[0].stage_type == "scaler"
         assert ir.pipeline[1].stage_type == "tree_ensemble"
+
+    def test_nested_pipeline_wrapper_raises_clear_error(self, tmp_path):
+        data = load_breast_cancer()
+        X, y = data.data.astype(np.float32), data.target
+
+        inner = SkPipeline([
+            ("scaler", StandardScaler()),
+            ("clf", GradientBoostingClassifier(n_estimators=10, max_depth=2, random_state=42)),
+        ])
+        nested = SkPipeline([
+            ("outer", inner),
+        ])
+        nested.fit(X, y)
+
+        path = tmp_path / "nested.pkl"
+        with open(path, "wb") as f:
+            pickle.dump(nested, f)
+
+        with pytest.raises(ValueError, match="Unsupported sklearn estimator"):
+            parse_sklearn_model(path)

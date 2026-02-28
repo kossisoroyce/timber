@@ -1,177 +1,162 @@
 # Timber
 
+[![PyPI version](https://img.shields.io/pypi/v/timber-compiler.svg)](https://pypi.org/project/timber-compiler/)
+[![Python versions](https://img.shields.io/pypi/pyversions/timber-compiler.svg)](https://pypi.org/project/timber-compiler/)
+[![CI](https://github.com/kossisoroyce/timber/actions/workflows/ci.yml/badge.svg)](https://github.com/kossisoroyce/timber/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 **Ollama for classical ML models.**
 
-Timber compiles trained tree-based models (XGBoost, LightGBM, scikit-learn, CatBoost, ONNX) into optimized native code and serves them over a local HTTP API — just like Ollama does for LLMs, but for small models.
+Timber compiles trained tree-based models (XGBoost, LightGBM, scikit-learn, CatBoost, ONNX) into optimized native C and serves them over a local HTTP API.
 
-No Python runtime at inference time. Sub-microsecond latency. One command to load, one command to serve.
+- No Python runtime in the inference hot path
+- Native latency (microseconds)
+- One command to load, one command to serve
+
+📚 Docs: https://kossisoroyce.github.io/timber/
+
+## Who is this for?
+
+Timber is built for teams that need **fast, predictable, portable inference**:
+
+- **Fraud/risk teams** running classical models in low-latency transaction paths
+- **Edge/IoT teams** deploying models to gateways and embedded devices
+- **Regulated industries** (finance, healthcare, automotive) needing deterministic artifacts and audit trails
+- **Platform/infra teams** replacing Python model-serving overhead with native binaries
 
 ## Quick Start
 
 ```bash
-pip install timber
+pip install timber-compiler
 ```
 
-### Load a model
-
 ```bash
-# Load any supported model — Timber auto-detects the format
-timber load model.json
+# Load any supported model (auto-detected)
 timber load model.json --name fraud-detector
-timber load model.pkl --format sklearn
-```
 
-### Serve it
-
-```bash
+# Serve it (Ollama-style workflow)
 timber serve fraud-detector
 ```
-
-```
-  _____ _           _
- |_   _(_)_ __ ___ | |__   ___ _ __
-   | | | | '_ ` _ \| '_ \ / _ \ '__|
-   | | | | | | | | | |_) |  __/ |
-   |_| |_|_| |_| |_|_.__/ \___|_|
-
-  Classical ML Inference Server v0.1.0
-
-  Listening on http://0.0.0.0:11434
-  Model:    fraud-detector
-  Trees:    100
-  Features: 30
-```
-
-### Run inference
 
 ```bash
 curl http://localhost:11434/api/predict \
   -d '{"model": "fraud-detector", "inputs": [[1.0, 2.0, 3.0, ...]]}'
 ```
 
-```json
-{
-  "model": "fraud-detector",
-  "outputs": [0.97],
-  "n_samples": 1,
-  "latency_us": 0.8,
-  "done": true
-}
-```
-
-### Manage models
-
-```bash
-timber list                    # list all loaded models
-timber remove fraud-detector   # remove a model
-```
-
-```
-NAME                      FORMAT        TREES  FEATURES       SIZE  COMPILED
----------------------------------------------------------------------------
-fraud-detector            xgboost         100        30    42.1 KB       yes
-churn-model               lightgbm         50        18    28.3 KB       yes
-```
-
-## API Reference
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/predict` | POST | Run inference — `{"model": "name", "inputs": [[...]]}` |
-| `/api/generate` | POST | Alias for `/api/predict` (Ollama compat) |
-| `/api/models` | GET | List loaded models |
-| `/api/model/:name` | GET | Get model info |
-| `/api/health` | GET | Health check |
-
 ## Supported Formats
 
 | Format | Framework | File Types |
-|--------|-----------|------------|
+| --- | --- | --- |
 | XGBoost JSON | XGBoost | `.json` |
 | LightGBM text | LightGBM | `.txt`, `.model`, `.lgb` |
 | scikit-learn pickle | scikit-learn | `.pkl`, `.pickle` |
-| ONNX ML opset | ONNX | `.onnx` |
+| ONNX ML opset (TreeEnsemble) | ONNX | `.onnx` |
 | CatBoost JSON | CatBoost | `.json` |
 
-All formats are auto-detected. Use `--format` to override.
+## Benchmarks (Methodology + Reproducibility)
 
-## Advanced: Direct Compilation
+The 336× claim is measured against Python XGBoost single-sample inference.
 
-For embedding in C/C++ projects without the server:
+### Methodology
+
+- **Hardware:** Apple M2 Pro, 16 GB RAM, macOS (recorded by script)
+- **Model:** XGBoost binary classifier, 50 trees, max depth 4, 30 features
+- **Dataset:** breast_cancer (sklearn)
+- **Warmup:** 1,000 iterations
+- **Timed:** 10,000 single-sample predictions
+- **Metric:** in-process latency (not HTTP/network round-trip)
+- **Baseline:** Python XGBoost (`booster.predict`)
+
+### Reproducible scripts
+
+See [`benchmarks/`](benchmarks/) for:
+
+- `run_benchmarks.py` (Timber vs Python XGBoost + optional ONNX Runtime/Treelite/lleaves)
+- `system_info.py` (hardware/software metadata)
+- `render_table.py` (markdown table output)
+
+Run:
 
 ```bash
-# Compile to C99 source
-timber compile --model model.json --out ./dist/
-
-# Inspect a model
-timber inspect model.json
-
-# Validate compiled output
-timber validate --artifact ./dist/ --reference model.json --data test.csv
-
-# Benchmark
-timber bench --artifact ./dist/ --data bench.csv
+python benchmarks/run_benchmarks.py --output benchmarks/results.json
+python benchmarks/render_table.py --input benchmarks/results.json
 ```
 
-### C API
+## Comparisons
 
-```c
-#include "model.h"
+| Runtime | Runtime deps | Typical artifact size | Latency profile | Notes |
+| --- | --- | --- | --- | --- |
+| Timber | None (generated C99) | ~48 KB (example model) | **~2 µs native call** | Strong fit for edge/embedded and deterministic deployments |
+| Python (xgboost/sklearn serving) | Python + framework stack | 50–200+ MB process footprint | 100s of µs to ms | Easy dev loop, high runtime overhead |
+| ONNX Runtime | ONNX Runtime libs | MBs to 10s of MBs | usually low 100s of µs | Broad model ecosystem, larger runtime |
+| Treelite Runtime | Treelite runtime + compiled artifact | MB-scale runtime + model lib | low-latency when compiled | Great for GBDTs; separate compile/runtime flow |
+| lleaves | Python package + LightGBM text model | Python runtime + compiled code | lower than pure Python | LightGBM-focused |
 
-TimberCtx* ctx;
-timber_init(&ctx);
+## Limitations / Known Issues
 
-float inputs[TIMBER_N_FEATURES] = { /* ... */ };
-float outputs[TIMBER_N_OUTPUTS];
+- ONNX support is currently focused on **TreeEnsembleClassifier/Regressor** operators.
+- CatBoost support expects **JSON exports** (not native binary formats).
+- scikit-learn parser supports major tree estimators and pipelines; uncommon/custom estimator wrappers may fail.
+- Pickle parsing follows Python pickle semantics — only load trusted artifacts.
+- XGBoost support is JSON-model based. Binary booster formats are not the primary input path.
+- Optional benchmark backends (ONNX Runtime, Treelite, lleaves) are skipped unless installed/configured.
 
-timber_infer_single(inputs, outputs, ctx);
-timber_free(ctx);
-```
+## API Endpoints (serve mode)
 
-### Logging Callback
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/predict` | POST | Run inference |
+| `/api/generate` | POST | Alias for `/api/predict` (Ollama compat) |
+| `/api/models` | GET | List loaded models |
+| `/api/model/:name` | GET | Get model metadata |
+| `/api/health` | GET | Health check |
 
-```c
-void my_logger(int level, const char* msg) {
-    printf("[timber] %s\n", msg);
+## Roadmap
+
+- Improve framework/version compatibility coverage (including more edge-case model exports)
+- Broaden ONNX operator support beyond tree ensembles
+- Strengthen embedded deployment profiles (ARM Cortex-M / RISC-V presets)
+- Add richer benchmark matrices and public reproducibility reports
+- Expand safety/regulatory tooling around audit + MISRA-C workflows
+
+## Examples
+
+End-to-end runnable examples live in [`examples/`](examples/):
+
+- `quickstart_xgboost.py`
+- `quickstart_lightgbm.py`
+- `quickstart_sklearn.py`
+
+They generate model files you can load immediately with `timber load`.
+
+## Paper
+
+Timber includes a full technical paper: [`paper/timber_paper.pdf`](paper/timber_paper.pdf)
+
+### Citation (BibTeX)
+
+```bibtex
+@misc{royce2026timber,
+  title        = {Timber: Compiling Classical Machine Learning Models to Native Inference Binaries},
+  author       = {Kossiso Royce},
+  year         = {2026},
+  howpublished = {GitHub repository and technical paper},
+  institution  = {Electricsheep Africa},
+  url          = {https://github.com/kossisoroyce/timber}
 }
-
-timber_set_log_callback(my_logger);
 ```
 
-## Compiler Pipeline
+## Community & Governance
 
-```
-Model artifact → Front-end parser → Timber IR → Optimizer → Code generator → Native code
-```
-
-### Optimizer Passes
-
-1. **Dead Leaf Elimination** — Prune negligible leaves
-2. **Constant Feature Detection** — Fold trivial splits
-3. **Threshold Quantization** — Classify thresholds for optimal storage
-4. **Frequency-Ordered Branch Sorting** — Reorder for branch prediction (with calibration data)
-5. **Pipeline Fusion** — Absorb scalers into tree thresholds
-6. **Vectorization Analysis** — Identify SIMD batching opportunities
-
-## Architecture
-
-```
-timber/
-├── ir/                  # Intermediate Representation
-├── frontends/           # Model format parsers (xgboost, lightgbm, sklearn, onnx, catboost)
-├── optimizer/           # IR optimization passes (6 passes)
-├── codegen/             # Code generation (C99, WebAssembly, MISRA-C)
-├── runtime/             # Python ctypes predictor
-├── store.py             # Local model registry (~/.timber/models/)
-├── serve.py             # HTTP inference server
-└── cli.py               # CLI (load, serve, list, remove, compile, inspect, ...)
-```
+- Contributing guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Code of conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+- Security policy: [`SECURITY.md`](SECURITY.md)
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -v          # 144 tests
+pytest tests/ -v
 ```
 
 ## License
