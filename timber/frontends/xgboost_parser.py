@@ -34,6 +34,24 @@ _OBJECTIVE_MAP: dict[str, Objective] = {
 }
 
 
+def _coerce_float(val: Any) -> float:
+    """Convert XGBoost numeric fields that may be stored as strings/lists into float."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        s = val.strip()
+        # XGBoost sometimes serializes as "[6.28E-1]"
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1].strip()
+        try:
+            return float(s)
+        except Exception:
+            pass
+    if isinstance(val, (list, tuple)) and val:
+        return _coerce_float(val[0])
+    raise ValueError(f"Cannot coerce value to float: {val!r}")
+
+
 def parse_xgboost_json(path: str | Path) -> TimberIR:
     """Parse an XGBoost JSON model file and return a TimberIR."""
     path = Path(path)
@@ -180,11 +198,11 @@ def _parse_single_tree(raw: dict[str, Any], tree_id: int) -> Tree:
         node = TreeNode(
             node_id=i,
             feature_index=split_indices[i] if not is_leaf else -1,
-            threshold=split_conditions[i] if not is_leaf else 0.0,
+            threshold=_coerce_float(split_conditions[i]) if not is_leaf else 0.0,
             left_child=left_children[i] if not is_leaf else -1,
             right_child=right_children[i] if not is_leaf else -1,
             is_leaf=is_leaf,
-            leaf_value=split_conditions[i] if is_leaf else 0.0,
+            leaf_value=_coerce_float(split_conditions[i]) if is_leaf else 0.0,
             depth=0,  # computed below
             default_left=bool(default_left_arr[i]) if i < len(default_left_arr) else True,
         )
@@ -207,11 +225,11 @@ def _parse_tree_nodes_format(raw_nodes: list[dict[str, Any]], tree_id: int) -> T
         node = TreeNode(
             node_id=i,
             feature_index=rn.get("split", -1) if not is_leaf else -1,
-            threshold=rn.get("split_condition", 0.0) if not is_leaf else 0.0,
+            threshold=_coerce_float(rn.get("split_condition", 0.0)) if not is_leaf else 0.0,
             left_child=rn.get("yes", -1) if not is_leaf else -1,
             right_child=rn.get("no", -1) if not is_leaf else -1,
             is_leaf=is_leaf,
-            leaf_value=rn.get("leaf", 0.0) if is_leaf else 0.0,
+            leaf_value=_coerce_float(rn.get("leaf", 0.0)) if is_leaf else 0.0,
             depth=rn.get("depth", 0),
             default_left=rn.get("missing", rn.get("yes", -1)) == rn.get("yes", -1),
         )
