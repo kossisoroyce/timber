@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
         'guides/differential-compilation',
         'guides/ensemble-composition',
         'guides/audit-trails',
+        'guides/iot-edge-deployment',
       ],
     },
     {
