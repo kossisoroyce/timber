@@ -23,7 +23,7 @@ Timber is built for teams that need **fast, predictable, portable inference**:
 - **Regulated industries** (finance, healthcare, automotive) needing deterministic artifacts and audit trails
 - **Platform/infra teams** replacing Python model-serving overhead with native binaries
 
-**Before you start, we do need your help to continue development. Our next steps are simplifying model deployments and building a library of ML models. You can share your high performant models and accompanying feature details with us, or you can donate to our work here:** buymeacoffee.com/electricsheepafrica
+**Before you start, we do need your help to continue development. Our next steps are simplifying model deployments and building a library of ML models. You can share your high performant models and accompanying feature details with us, or you can donate to our work here:** https://buymeacoffee.com/electricsheepafrica
 
 ## Quick Start
 
