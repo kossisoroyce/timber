@@ -33,6 +33,39 @@ _OBJECTIVE_MAP: dict[str, Objective] = {
 }
 
 
+def _parse_base_score_list(val: Any) -> list[float]:
+    """Parse base_score which may be scalar, list, or bracketed comma-separated string."""
+    if isinstance(val, (int, float)):
+        return [float(val)]
+    if isinstance(val, (list, tuple)):
+        result = []
+        for v in val:
+            try:
+                result.append(_coerce_float(v))
+            except Exception:
+                pass
+        return result or [0.5]
+    if isinstance(val, str):
+        s = val.strip()
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1].strip()
+        if "," in s:
+            result = []
+            for part in s.split(","):
+                part = part.strip()
+                if part:
+                    try:
+                        result.append(float(part))
+                    except Exception:
+                        pass
+            return result or [0.5]
+        try:
+            return [float(s)]
+        except Exception:
+            return [0.5]
+    return [0.5]
+
+
 def _coerce_float(val: Any) -> float:
     """Convert XGBoost numeric fields that may be stored as strings/lists into float."""
     if isinstance(val, (int, float)):
@@ -94,7 +127,9 @@ def _parse_xgboost_dict(data: dict[str, Any], artifact_hash: str = "") -> Timber
     learner_params = learner.get("learner_model_param", {})
     n_features = int(learner_params.get("num_feature", 0))
     n_classes = int(learner_params.get("num_class", 0))
-    base_score_raw = _coerce_float(learner_params.get("base_score", 0.5))
+    base_score_list = _parse_base_score_list(learner_params.get("base_score", 0.5))
+    base_score_raw = base_score_list[0] if base_score_list else 0.5
+    per_class_base_scores = base_score_list if len(base_score_list) > 1 else []
 
     # Objective
     obj_info = learner.get("objective", {})
@@ -166,6 +201,7 @@ def _parse_xgboost_dict(data: dict[str, Any], artifact_hash: str = "") -> Timber
         n_classes=n_classes,
         objective=objective,
         base_score=base_score,
+        per_class_base_scores=per_class_base_scores,
         learning_rate=learning_rate,
         is_boosted=True,
     )

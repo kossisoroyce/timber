@@ -176,6 +176,7 @@ class TreeEnsembleStage(PipelineStage):
     n_classes: int = 1
     objective: Objective = Objective.REGRESSION
     base_score: float = 0.5
+    per_class_base_scores: list[float] = field(default_factory=list)
     learning_rate: float = 0.1
     is_boosted: bool = True  # GBT vs bagged (RF)
     annotations: dict[str, Any] = field(default_factory=dict)
@@ -367,6 +368,7 @@ def _stage_to_dict(s: PipelineStage) -> dict[str, Any]:
         d["n_classes"] = s.n_classes
         d["objective"] = s.objective.value
         d["base_score"] = s.base_score
+        d["per_class_base_scores"] = s.per_class_base_scores
         d["learning_rate"] = s.learning_rate
         d["is_boosted"] = s.is_boosted
     elif isinstance(s, LinearStage):
@@ -415,6 +417,7 @@ def _stage_from_dict(d: dict[str, Any]) -> PipelineStage:
             n_classes=d.get("n_classes", 1),
             objective=Objective(d.get("objective", "reg:squarederror")),
             base_score=d.get("base_score", 0.5),
+            per_class_base_scores=d.get("per_class_base_scores", []),
             learning_rate=d.get("learning_rate", 0.1),
             is_boosted=d.get("is_boosted", True),
         )

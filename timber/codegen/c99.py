@@ -231,6 +231,16 @@ class C99Emitter:
 
         # Base score
         lines.append(f"static const {float_type} TIMBER_BASE_SCORE = {self._format_float(ensemble.base_score)};")
+
+        # Per-class base scores for multiclass models (XGBoost 3.1+ stores per-class vectors)
+        if ensemble.objective == Objective.MULTICLASS_CLASSIFICATION and ensemble.n_classes > 2:
+            pcbs = ensemble.per_class_base_scores
+            if len(pcbs) == ensemble.n_classes:
+                bs_vals = ", ".join(self._format_float(v) for v in pcbs)
+            else:
+                bs_vals = ", ".join("0.0" for _ in range(ensemble.n_classes))
+            lines.append(f"static const double TIMBER_CLASS_BASE_SCORES[{ensemble.n_classes}] = {{{bs_vals}}};")
+
         lines.append("")
 
         return "\n".join(lines) + "\n"
@@ -361,7 +371,8 @@ class C99Emitter:
             # Multi-class: accumulate per-class scores with double precision
             lines.append(f"    double scores[{ensemble.n_classes}];")
             lines.append("    int c;")
-            lines.append(f"    for (c = 0; c < {ensemble.n_classes}; c++) scores[c] = 0.0;")
+            lines.append(f"    for (c = 0; c < {ensemble.n_classes}; c++) scores[c] = TIMBER_CLASS_BASE_SCORES[c];")
+            lines.append("")
             lines.append("")
 
             # Trees are interleaved: tree i contributes to class (i % n_classes)
