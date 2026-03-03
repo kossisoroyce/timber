@@ -39,9 +39,13 @@ def _coerce_float(val: Any) -> float:
         return float(val)
     if isinstance(val, str):
         s = val.strip()
-        # XGBoost sometimes serializes as "[6.28E-1]"
+        # XGBoost sometimes serializes as "[6.28E-1]" (single) or
+        # "[-3.95E-2,1.97E-1,-1.57E-1]" (multiclass vector in XGBoost 3.1+)
         if s.startswith("[") and s.endswith("]"):
             s = s[1:-1].strip()
+        # Multiple comma-separated values: take the first (per-class base_score)
+        if "," in s:
+            s = s.split(",")[0].strip()
         try:
             return float(s)
         except Exception:
