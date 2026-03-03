@@ -10,15 +10,54 @@ function HeroSection() {
       <div className="container">
         <h1 className="hero__title">Timber</h1>
         <p className="hero__subtitle">
-          Ollama for classical ML models. Compile XGBoost, LightGBM, scikit-learn,
-          CatBoost & ONNX models into native C99 inference code.
-          One command to load, one command to serve.
+          Compile XGBoost, LightGBM, scikit-learn, CatBoost &amp; ONNX models to native C99.
+          Serve any model — local file or remote URL — in one command.
         </p>
-        <div style={{marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap'}}>
+
+        <div style={{margin: '2rem auto 1.5rem', maxWidth: 480}}>
+          <code style={{
+            display: 'block',
+            background: '#1a1a1a',
+            color: '#ffffff',
+            padding: '0.75rem 1.25rem',
+            borderRadius: 4,
+            fontSize: '1rem',
+            fontFamily: 'monospace',
+            border: '1px solid #333',
+            textAlign: 'left',
+          }}>
+            pip install timber-compiler
+          </code>
+        </div>
+
+        <div style={{
+          background: '#111',
+          border: '1px solid #2a2a2a',
+          borderRadius: 6,
+          padding: '1.1rem 1.5rem',
+          maxWidth: 680,
+          margin: '0 auto 2rem',
+          textAlign: 'left',
+          fontFamily: 'monospace',
+          fontSize: '0.95rem',
+          lineHeight: 1.9,
+          color: '#aaaaaa',
+        }}>
+          <div style={{color: '#555', marginBottom: '0.25rem', fontSize: '0.8rem'}}>then run:</div>
+          <div>
+            <span style={{color: '#555'}}>$ </span>
+            <span style={{color: '#ffffff'}}>timber serve https://yourhost.com/model.json</span>
+          </div>
+          <div style={{color: '#444', fontSize: '0.82rem', marginTop: '0.4rem'}}>
+            ↳ downloads · compiles · serves — all in one command
+          </div>
+        </div>
+
+        <div style={{display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap'}}>
           <Link className="button button--primary button--lg" to="/docs/getting-started">
             Get Started →
           </Link>
-          <Link className="button button--outline button--lg" style={{color: '#94a3b8', borderColor: '#334155'}} to="https://github.com/kossisoroyce/timber">
+          <Link className="button button--outline button--lg" style={{color: '#aaaaaa', borderColor: '#444'}} to="https://github.com/kossisoroyce/timber">
             GitHub ★
           </Link>
         </div>
@@ -55,16 +94,16 @@ function StatsSection() {
 }
 
 function QuickstartSection() {
-  const code = `# Install
+  const codeUrl = `# Option 1: serve directly from a URL — no pre-download needed
 pip install timber-compiler
+timber serve https://yourhost.com/fraud_model.json`;
 
-# Load & compile a model
-timber load model.json --name fraud-detector
-
-# Serve it
+  const codeLocal = `# Option 2: load a local file, then serve by name
+pip install timber-compiler
+timber load fraud_model.json --name fraud-detector
 timber serve fraud-detector
 
-# Query it
+# Query either way
 curl http://localhost:11434/api/predict \\
   -d '{"model": "fraud-detector", "inputs": [[1.0, 2.0, ...]]}'`;
 
@@ -72,16 +111,24 @@ curl http://localhost:11434/api/predict \\
     <div className="container" style={{padding: '3rem 0'}}>
       <div className="row">
         <div className="col col--5" style={{display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-          <h2 style={{fontSize: '2rem'}}>Three commands. Native speed.</h2>
-          <p style={{color: '#94a3b8', fontSize: '1.1rem', lineHeight: 1.7}}>
-            Timber compiles your trained model to optimized C99, caches the shared library locally,
-            and serves it over an Ollama-compatible REST API. Python never touches the inference hot path.
+          <h2 style={{fontSize: '2rem', lineHeight: 1.2}}>One command.<br />Native speed.</h2>
+          <p style={{color: 'var(--ifm-color-secondary-darkest)', fontSize: '1rem', lineHeight: 1.7, marginTop: '1rem'}}>
+            Point Timber at any URL and it downloads, compiles, and serves immediately.
+            No separate load step. No configuration. Python never touches the hot path.
+          </p>
+          <p style={{fontSize: '0.9rem', color: '#888'}}>
+            Or load a local file and serve by name — your choice.
           </p>
         </div>
         <div className="col col--7">
-          <CodeBlock language="bash" title="Terminal">
-            {code}
+          <CodeBlock language="bash" title="Serve from URL (recommended)">
+            {codeUrl}
           </CodeBlock>
+          <div style={{marginTop: '1rem'}}>
+            <CodeBlock language="bash" title="Serve from local file">
+              {codeLocal}
+            </CodeBlock>
+          </div>
         </div>
       </div>
     </div>
@@ -124,7 +171,7 @@ function FeaturesSection() {
           <div key={i} className="col col--4" style={{marginBottom: '1.5rem'}}>
             <div className="feature-card">
               <h3>{f.title}</h3>
-              <p style={{color: '#94a3b8'}}>{f.description}</p>
+              <p style={{color: '#888', margin: 0}}>{f.description}</p>
             </div>
           </div>
         ))}
@@ -137,7 +184,7 @@ function ArchitectureSection() {
   return (
     <div className="container" style={{padding: '3rem 0'}}>
       <h2 style={{textAlign: 'center', fontSize: '2rem', marginBottom: '1rem'}}>How It Works</h2>
-      <p style={{textAlign: 'center', color: '#94a3b8', marginBottom: '2rem', maxWidth: 600, margin: '0 auto 2rem'}}>
+      <p style={{textAlign: 'center', color: '#888', marginBottom: '2rem', maxWidth: 600, margin: '0 auto 2rem'}}>
         Timber treats your trained model as a program specification and compiles it through a classical compiler pipeline.
       </p>
       <div style={{
@@ -146,17 +193,17 @@ function ArchitectureSection() {
         justifyContent: 'center',
         flexWrap: 'wrap',
         gap: '0.5rem',
-        fontSize: '0.95rem',
+        fontSize: '0.9rem',
         padding: '1.5rem',
         background: 'var(--ifm-background-surface-color)',
-        borderRadius: 12,
-        border: '1px solid rgba(52,211,153,0.1)',
+        borderRadius: 4,
+        border: '1px solid rgba(128,128,128,0.15)',
       }}>
         {[
           'Model Artifact',
           '→ Parse →',
           'Timber IR',
-          '→ Optimize (6 passes) →',
+          '→ Optimize →',
           'Optimized IR',
           '→ Emit →',
           'C99 / WASM',
@@ -166,10 +213,10 @@ function ArchitectureSection() {
           'HTTP API',
         ].map((step, i) => (
           <span key={i} style={{
-            padding: step.startsWith('→') ? '0.25rem 0' : '0.5rem 1rem',
-            background: step.startsWith('→') ? 'transparent' : 'rgba(52,211,153,0.1)',
-            borderRadius: step.startsWith('→') ? 0 : 8,
-            color: step.startsWith('→') ? '#64748b' : 'var(--ifm-color-primary)',
+            padding: step.startsWith('→') ? '0.25rem 0' : '0.4rem 0.9rem',
+            background: step.startsWith('→') ? 'transparent' : 'rgba(128,128,128,0.1)',
+            borderRadius: step.startsWith('→') ? 0 : 4,
+            color: step.startsWith('→') ? '#888' : 'var(--ifm-font-color-base)',
             fontWeight: step.startsWith('→') ? 400 : 600,
             fontFamily: 'monospace',
           }}>
