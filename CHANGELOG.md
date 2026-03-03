@@ -11,6 +11,27 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [0.2.0] — 2026-03-03
+
+### Fixed
+
+- **XGBoost 3.1+ multiclass `base_score`** — XGBoost 3.1+ serializes per-class base scores as a comma-separated bracket string (e.g. `'[-3.95E-2,1.97E-1,-1.57E-1]'`). Timber previously discarded all but the first value and initialized all class accumulators to `0.0`, producing systematic probability errors up to 7.5%. Now the full per-class vector is parsed and applied correctly.
+
+### Added
+
+- `per_class_base_scores: list[float]` field on `TreeEnsembleStage` IR with full serialisation/deserialisation support
+- `_parse_base_score_list()` helper in `xgboost_parser.py` for robust base_score parsing across XGBoost versions
+- `TIMBER_CLASS_BASE_SCORES[]` static array emitted in `model_data.c` for multiclass models
+- Comprehensive documentation overhaul — all four docs pages expanded and `llms.txt` added at repo root
+- `mkdocs.yml` for docs site structure
+
+### Changed
+
+- Version bumped from `0.1.0` → `0.2.0`
+- README completely rewritten: live terminal demo, compiler pipeline diagram, full CLI and API reference tables, runtime comparison feature matrix, roadmap with status indicators
+
+---
+
 ## [0.1.0] — 2026-03-03
 
 ### Added

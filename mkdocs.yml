@@ -1,0 +1,66 @@
+site_name: Timber
+site_description: Classical ML Inference Compiler — compile tree-based models to native C
+site_url: https://kossisoroyce.github.io/timber/
+repo_url: https://github.com/kossisoroyce/timber
+repo_name: kossisoroyce/timber
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Examples: examples.md
+      - Advanced Usage: advanced.md
+  - Reference:
+      - API Reference: api-reference.md
+      - IR Reference: ir-reference.md
+      - Architecture: architecture.md
+  - FAQ: faq.md
+  - Changelog: ../CHANGELOG.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kossisoroyce/timber
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/timber-compiler/

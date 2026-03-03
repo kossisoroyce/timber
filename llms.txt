@@ -1,0 +1,859 @@
+# Timber — LLM Reference Document
+
+This file is a comprehensive single-file reference for Timber, designed for use
+by language models, code assistants, and AI tooling. It covers the full public
+API, CLI, IR, code generation, and HTTP server.
+
+Version: 0.2.0
+License: Apache-2.0
+PyPI: timber-compiler
+Repository: https://github.com/kossisoroyce/timber
+Docs: https://kossisoroyce.github.io/timber/
+
+---
+
+## What Timber Is
+
+Timber is a classical ML inference compiler. It takes a trained tree-based model
+file (XGBoost JSON, LightGBM text, scikit-learn pickle, CatBoost JSON, or ONNX)
+and compiles it into a self-contained C99 shared library. A built-in HTTP server
+(Ollama-compatible API) serves the compiled model.
+
+Key properties:
+- Zero runtime dependencies in the inference path (pure C99)
+- No Python, no framework, no interpreter in the hot path
+- Single-sample latency ~2 µs (vs ~670 µs Python XGBoost)
+- Artifact size ~48 KB for a 50-tree model
+- Ollama-compatible API on port 11434
+
+---
+
+## Installation
+
+```bash
+pip install timber-compiler          # core (XGBoost, LightGBM, sklearn, ONNX, CatBoost)
+pip install "timber-compiler[serve]" # + uvicorn for production serving
+pip install "timber-compiler[full]"  # + all optional framework dependencies
+```
+
+Requires: Python 3.10+, gcc or clang (for shared library compilation)
+
+---
+
+## Quickstart (3 commands)
+
+```bash
+timber load model.json --name my-model   # compile and register
+timber serve my-model                    # start HTTP server on :11434
+curl http://localhost:11434/api/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "my-model", "inputs": [[1.0, 2.0, 3.0, ...]]}'
+```
+
+Response: `{"model": "my-model", "outputs": [[0.97]], "n_samples": 1}`
+
+---
+
+## CLI Commands
+
+### timber load <path> [--name NAME] [--format FMT]
+
+Compile a model from a local file path and register it in the local store.
+
+- `path`: file path to the model artifact
+- `--name NAME`: name to register as (default: filename stem)
+- `--format FMT`: override auto-detection (xgboost, lightgbm, sklearn, catboost, onnx)
+
+Examples:
+```bash
+timber load model.json
+timber load model.json --name fraud-detector
+timber load pipeline.pkl --format sklearn
+timber load https://example.com/model.json --name remote-model
+```
+
+### timber pull <url> [--name NAME] [--format FMT] [--force]
+
+Download a model from an HTTPS URL, compile it, and register it.
+
+- Caches downloads in ~/.timber/cache/<url-hash>/
+- --force re-downloads even if cached
+
+```bash
+timber pull https://example.com/fraud_model.json --name fraud-v2
+timber pull https://example.com/model.json --force
+```
+
+### timber serve <source> [--host HOST] [--port PORT] [--name NAME] [--force]
+
+Start the HTTP inference server. Source can be a model name, file path, or URL.
+
+- Default host: 0.0.0.0
+- Default port: 11434
+
+```bash
+timber serve my-model
+timber serve my-model --port 8080
+timber serve ./model.json --name auto-loaded
+timber serve https://example.com/model.json --name remote
+```
+
+### timber list
+
+Print a table of all registered models with name, framework, format, trees,
+features, size, and compiled status.
+
+### timber remove <name>
+
+Delete a registered model from the local store.
+
+### timber inspect <path>
+
+Print model summary (trees, features, objective, IR stages) without compiling.
+
+### timber validate [--artifact DIR] [--reference PATH] [--data PATH] [--tolerance FLOAT]
+
+Compare compiled artifact predictions against the source model.
+Default tolerance: 1e-5.
+
+### timber bench <name> [--warmup-iters N] [--iters N] [--batch-sizes LIST]
+
+Benchmark latency and throughput. Reports P50/P95/P99 latency across batch sizes.
+
+### timber compile --model PATH [--out DIR] [--target PATH] [--format FMT]
+
+Compile a model to C99 source files without caching. Output directory default: ./dist/
+
+---
+
+## HTTP API
+
+Base URL: http://localhost:11434 (default)
+
+All requests and responses use JSON with Content-Type: application/json.
+Maximum request body: 64 MB.
+
+### POST /api/predict
+
+Run inference on a loaded model.
+
+Request body:
+```json
+{
+  "model": "model-name",
+  "inputs": [[f1, f2, ..., fn], [f1, f2, ..., fn]]
+}
+```
+- "model": string — name of the loaded model
+- "inputs": 2D array of floats, shape [n_samples, n_features]
+
+Success response (200):
+```json
+{
+  "model": "model-name",
+  "outputs": [[p1], [p2]],
+  "n_samples": 2,
+  "latency_us": 3.4,
+  "done": true
+}
+```
+- "outputs": 2D array, shape [n_samples, n_outputs]
+  - Binary classification: shape [n_samples, 1], values are probabilities in [0, 1]
+  - Multiclass (softprob): shape [n_samples, n_classes], values sum to 1
+  - Regression: shape [n_samples, 1], raw predicted values
+
+Error responses:
+- 400: {"error": "no model specified"} — missing "model" field
+- 400: {"error": "expected N features, got M"} — wrong feature count
+- 400: {"error": "model 'x' not loaded"} — model not in store
+- 413: body exceeds 64 MB limit
+
+### POST /api/generate
+
+Alias for /api/predict. Provided for Ollama API compatibility.
+
+### GET /api/models
+
+List all loaded models.
+
+Response (200):
+```json
+{
+  "models": [
+    {
+      "name": "fraud-detector",
+      "n_features": 30,
+      "n_outputs": 1,
+      "n_trees": 50,
+      "objective": "binary:logistic",
+      "framework": "xgboost",
+      "format": "xgboost",
+      "version": "0.2.0"
+    }
+  ]
+}
+```
+
+### GET /api/model/:name
+
+Get metadata for a specific model by name.
+
+Response: same shape as a single element of /api/models "models" array.
+404 if not found: {"error": "model 'x' not found"}
+
+### GET /api/health
+
+Health check endpoint.
+
+Response (200): {"status": "ok", "version": "0.2.0"}
+
+---
+
+## Python API
+
+### TimberPredictor
+
+Drop-in numpy predictor, compiles on first use.
+
+```python
+from timber.runtime.predictor import TimberPredictor
+import numpy as np
+
+# From a model file (compiles on first call, ~50 ms)
+pred = TimberPredictor.from_model("model.json")
+
+# From a pre-compiled artifact directory
+pred = TimberPredictor.from_artifact("./dist/", build=True)
+
+# Predict — accepts numpy float32 array, shape [n_samples, n_features]
+X = np.array([[17.99, 10.38, ...]], dtype=np.float32)
+outputs = pred.predict(X)  # shape [n_samples, n_outputs]
+
+# Properties
+pred.n_features   # int
+pred.n_outputs    # int
+pred.n_trees      # int
+```
+
+### ModelStore
+
+```python
+from timber.store import ModelStore
+
+store = ModelStore()                           # uses ~/.timber by default
+store = ModelStore(home="/custom/path")
+
+info = store.load_model("model.json", name="my-model")
+models = store.list_models()                   # list[ModelInfo]
+info = store.get_model("my-model")             # ModelInfo | None
+store.remove_model("my-model")
+model_dir = store.get_model_dir("my-model")    # Path | None
+lib_path = store.get_lib_path("my-model")      # Path | None
+```
+
+### ModelInfo fields
+
+```python
+info.name          # str — registered name
+info.framework     # str — "xgboost", "lightgbm", "sklearn", "catboost", "onnx"
+info.format        # str — same as framework for most; "pickle" for sklearn
+info.n_trees       # int
+info.n_features    # int
+info.n_outputs     # int
+info.objective     # str — e.g. "binary:logistic", "multi:softprob", "reg:squarederror"
+info.compiled      # bool
+info.size_bytes    # int
+info.version       # str — timber version used to compile
+```
+
+### Parsers (direct use)
+
+```python
+from timber.frontends.auto_detect import parse_model
+from timber.frontends.xgboost_parser import parse_xgboost_json
+from timber.frontends.lightgbm_parser import parse_lightgbm_text
+from timber.frontends.sklearn_parser import parse_sklearn_model
+from timber.frontends.onnx_parser import parse_onnx_model
+
+ir = parse_model("model.json")              # auto-detects format
+ir = parse_xgboost_json("model.json")       # explicit XGBoost
+```
+
+### C99 Emitter (direct use)
+
+```python
+from timber.codegen.c99 import C99Emitter, TargetSpec
+from timber.frontends.auto_detect import parse_model
+
+ir = parse_model("model.json")
+spec = TargetSpec(arch="x86_64", precision="float32")
+emitter = C99Emitter(spec)
+output = emitter.emit(ir)
+
+# output.model_c      — inference logic
+# output.model_h      — public API header
+# output.model_data_c — static tree data arrays
+# output.makefile     — GNU Make build file
+# output.cmakelists   — CMake build file
+```
+
+### Optimizer
+
+```python
+from timber.optimizer.pipeline import run_optimizer
+from timber.frontends.auto_detect import parse_model
+
+ir = parse_model("model.json")
+optimized_ir, report = run_optimizer(ir)
+
+# report.passes_applied  — list of pass names that made changes
+# report.nodes_removed   — total tree nodes eliminated
+```
+
+---
+
+## Timber IR (Internal Representation)
+
+The IR is a typed dataclass tree in `timber/ir/model.py`.
+
+### TimberIR
+
+Top-level IR object.
+
+```python
+@dataclass
+class TimberIR:
+    schema: Schema                    # input feature schema
+    pipeline: list[PipelineStage]     # ordered processing stages
+    metadata: Metadata                # provenance and hash
+```
+
+### Schema
+
+```python
+@dataclass
+class Schema:
+    fields: list[Field]               # one per input feature
+```
+
+### Field
+
+```python
+@dataclass
+class Field:
+    name: str
+    dtype: FieldType                  # FieldType.FLOAT or FieldType.INT
+    index: int                        # 0-based position in input vector
+```
+
+### PipelineStage (abstract base)
+
+All stages inherit from PipelineStage with fields: stage_name, stage_type.
+
+Concrete stage types: ScalerStage, EncoderStage, ImputerStage,
+                      TreeEnsembleStage, LinearStage, AggregatorStage
+
+### TreeEnsembleStage
+
+The primary inference stage for tree-based models.
+
+```python
+@dataclass
+class TreeEnsembleStage(PipelineStage):
+    trees: list[Tree]
+    n_features: int
+    n_classes: int                    # 1 for regression, 2 for binary, N for multiclass
+    objective: Objective
+    base_score: float                 # scalar base score (binary/regression)
+    per_class_base_scores: list[float] # per-class base scores (multiclass, XGBoost 3.1+)
+    learning_rate: float
+    is_boosted: bool                  # True for GBT, False for random forest
+    annotations: dict[str, Any]
+```
+
+### Objective enum
+
+```python
+class Objective(str, Enum):
+    REGRESSION = "reg:squarederror"
+    REGRESSION_LOGISTIC = "reg:logistic"
+    BINARY_CLASSIFICATION = "binary:logistic"
+    MULTICLASS_CLASSIFICATION = "multi:softprob"
+    RANKING = "rank:pairwise"
+```
+
+### Tree
+
+```python
+@dataclass
+class Tree:
+    tree_id: int
+    nodes: list[TreeNode]
+```
+
+### TreeNode
+
+```python
+@dataclass
+class TreeNode:
+    node_id: int
+    feature_index: int        # -1 for leaf nodes
+    threshold: float          # split threshold; 0.0 for leaf nodes
+    left_child: int           # node index; -1 for leaf
+    right_child: int          # node index; -1 for leaf
+    leaf_value: float         # prediction value at leaf; 0.0 for internal nodes
+    is_leaf: bool
+    default_left: bool        # NaN routing: True → go left on NaN
+    depth: int
+```
+
+### ScalerStage
+
+Applied before the tree ensemble when the source model includes a scaler
+(e.g., sklearn Pipeline with StandardScaler).
+
+```python
+@dataclass
+class ScalerStage(PipelineStage):
+    means: list[float]
+    scales: list[float]
+    feature_indices: list[int]
+```
+
+Transforms input feature i as: `(x[i] - means[i]) / scales[i]`
+
+---
+
+## Generated C API
+
+After `timber compile`, the output directory contains:
+
+- model.h         — public C API header
+- model.c         — inference logic
+- model_data.c    — static const arrays (included by model.c)
+- CMakeLists.txt  — CMake configuration
+- Makefile        — GNU Make fallback
+
+### Public C API (model.h)
+
+```c
+/* Compile-time constants */
+#define TIMBER_N_FEATURES  <n>   /* number of input features */
+#define TIMBER_N_OUTPUTS   <n>   /* number of output values per sample */
+#define TIMBER_N_TREES     <n>
+#define TIMBER_MAX_DEPTH   <n>
+#define TIMBER_ABI_VERSION 1
+
+/* Error codes */
+#define TIMBER_OK          0
+#define TIMBER_ERR_NULL   -1   /* null pointer argument */
+#define TIMBER_ERR_INIT   -2   /* context not initialized */
+#define TIMBER_ERR_BOUNDS -3   /* argument out of bounds */
+
+/* Opaque context */
+typedef struct TimberCtx TimberCtx;
+
+/* Logging callback type: void fn(int level, const char* msg) */
+/* Levels: 0=error, 1=warn, 2=info, 3=debug */
+typedef void (*timber_log_fn)(int level, const char* msg);
+
+/* Functions */
+int         timber_init(TimberCtx** ctx);
+void        timber_free(TimberCtx* ctx);
+int         timber_abi_version(void);
+const char* timber_strerror(int code);
+void        timber_set_log_callback(timber_log_fn fn);
+
+int timber_infer_single(
+    const float inputs[TIMBER_N_FEATURES],
+    float       outputs[TIMBER_N_OUTPUTS],
+    const TimberCtx* ctx
+);
+
+int timber_infer(
+    const float* inputs,     /* row-major [n_samples × TIMBER_N_FEATURES] */
+    int          n_samples,
+    float*       outputs,    /* pre-allocated [n_samples × TIMBER_N_OUTPUTS] */
+    const TimberCtx* ctx
+);
+```
+
+### Minimal C usage
+
+```c
+#include "model.h"
+#include <stdio.h>
+
+int main(void) {
+    TimberCtx* ctx;
+    if (timber_init(&ctx) != TIMBER_OK) return 1;
+
+    float inputs[TIMBER_N_FEATURES]  = { /* feature values */ };
+    float outputs[TIMBER_N_OUTPUTS];
+
+    if (timber_infer_single(inputs, outputs, ctx) == TIMBER_OK)
+        printf("output: %f\n", outputs[0]);
+
+    timber_free(ctx);
+    return 0;
+}
+```
+
+Build: `gcc -O2 -o predict main.c model.c model_data.c -lm`
+
+### Output interpretation
+
+Binary classification (objective = binary:logistic):
+- outputs[0] ∈ [0, 1] — probability of the positive class
+
+Multiclass (objective = multi:softprob, n_classes = K):
+- outputs[0..K-1] — per-class probabilities, sum to 1.0
+
+Regression (objective = reg:squarederror):
+- outputs[0] — raw predicted value
+
+---
+
+## Model Store Layout
+
+Default location: ~/.timber/
+Override: set TIMBER_HOME environment variable.
+
+```
+~/.timber/
+├── registry.json                  # model registry (atomic writes)
+├── cache/
+│   └── <url-hash>/
+│       └── <filename>             # cached downloads
+└── models/
+    └── <model-name>/
+        ├── model.c
+        ├── model.h
+        ├── model_data.c
+        ├── model.timber.json      # serialized IR
+        ├── libtimber_model.so     # compiled shared library (Linux)
+        ├── libtimber_model.dylib  # compiled shared library (macOS)
+        └── audit_report.json      # compilation audit trail
+```
+
+registry.json structure:
+```json
+{
+  "models": {
+    "my-model": {
+      "name": "my-model",
+      "framework": "xgboost",
+      "format": "xgboost",
+      "n_trees": 50,
+      "n_features": 30,
+      "n_outputs": 1,
+      "objective": "binary:logistic",
+      "compiled": true,
+      "size_bytes": 49152,
+      "version": "0.2.0",
+      "path": "/Users/user/.timber/models/my-model"
+    }
+  }
+}
+```
+
+---
+
+## Optimizer Passes
+
+Timber runs a multi-pass optimizer on the IR before code generation.
+Passes are applied in order; each reports whether it changed the IR.
+
+1. dead_leaf_elimination
+   Removes tree nodes whose subtree contains only identical leaf values.
+   Replaces the node with a single leaf of that value.
+
+2. constant_feature_detection
+   Identifies features with constant value across calibration data (if provided).
+   Replaces all splits on that feature with a direct branch to the taken child.
+
+3. threshold_quantization
+   Converts float64 split thresholds to float32 where the rounding does not
+   change split decisions for any training sample. Reduces model_data.c size.
+
+4. frequency_branch_sort
+   Reorders children so the more-frequently-taken branch is "left" (falls through
+   in C). Improves branch predictor performance. Requires calibration data.
+
+5. pipeline_fusion
+   When a ScalerStage immediately precedes a TreeEnsembleStage, folds the scaler
+   into the tree thresholds. Eliminates the scaler from the generated C entirely.
+
+6. vectorization_analysis
+   Analyzes whether SIMD vectorization is applicable across trees (advisory only
+   in the current version — does not yet emit SIMD intrinsics).
+
+---
+
+## Supported Frameworks
+
+### XGBoost
+- File format: JSON (.json) — save with `booster.save_model("model.json")`
+- Objectives: binary:logistic, multi:softprob, multi:softmax, reg:squarederror,
+              reg:logistic, rank:pairwise, rank:ndcg
+- Notes:
+  - XGBoost 3.1+ stores per-class base_score as a vector; Timber handles this correctly
+  - Binary booster format (.ubj) is NOT supported — use JSON export
+
+### LightGBM
+- File format: text (.txt / .model / .lgb) — save with `booster.save_model("model.txt")`
+- Objectives: binary, multiclass, regression, regression_l1, huber
+- Notes: all standard objectives supported
+
+### scikit-learn
+- File format: pickle (.pkl / .pickle)
+- Supported estimators:
+  - GradientBoostingClassifier / GradientBoostingRegressor
+  - RandomForestClassifier / RandomForestRegressor
+  - ExtraTreesClassifier / ExtraTreesRegressor
+  - DecisionTreeClassifier / DecisionTreeRegressor
+  - Pipeline (with StandardScaler, MinMaxScaler, SimpleImputer as preprocessing steps)
+- Notes:
+  - Only load pickle files from trusted sources (Python pickle security)
+  - Custom/uncommon estimators may require a custom front-end parser
+
+### CatBoost
+- File format: JSON — save with `model.save_model("model.json", format="json")`
+- Note: the native CatBoost binary format is NOT supported; use JSON export
+- Auto-detected via presence of "oblivious_trees" key
+
+### ONNX
+- File format: .onnx
+- Supported operators: TreeEnsembleClassifier, TreeEnsembleRegressor (ML opset)
+- Other ONNX operators (linear, SVM, normalizers) are NOT currently supported
+
+---
+
+## Error Reference
+
+### CLI errors
+
+"Model 'x' not found" — model name not in registry; run `timber list`
+"Format not recognized" — auto-detection failed; use --format flag
+"Compilation failed" — gcc/clang not found or produced an error
+"Download failed: HTTP 404" — URL not found
+"Model name contains invalid characters" — only [a-z0-9_-] allowed
+
+### HTTP API errors
+
+400 Bad Request:
+- {"error": "no model specified"} — request body missing "model" field
+- {"error": "no inputs provided"} — request body missing "inputs" field
+- {"error": "expected N features, got M"} — inputs shape mismatch
+- {"error": "model 'x' not loaded"} — model name not in active session
+
+413 Request Entity Too Large:
+- Body exceeds 64 MB limit
+
+500 Internal Server Error:
+- {"error": "<message>"} — unexpected inference error
+
+### Python API errors
+
+FileNotFoundError — model.h not found in artifact directory
+ValueError — model format not recognized or parse failed
+RuntimeError — C compiler not found or compilation failed
+
+---
+
+## Security
+
+- Model names are sanitized with strict allowlist [a-z0-9_-]; prevents path traversal
+- Registry writes are atomic (write to .json.tmp then rename); prevents corruption
+- HTTP server enforces 64 MB body limit; returns 413 on oversize
+- Content-Length parse errors return 400 instead of crashing
+- Pickle loading follows standard Python security: only load trusted artifacts
+- Temp directories created during compilation are cleaned up via atexit
+
+---
+
+## Environment Variables
+
+TIMBER_HOME    — override default store location (~/.timber)
+CC             — override C compiler (default: gcc, fallback: clang)
+TIMBER_LOG     — set log level (debug, info, warn, error)
+
+---
+
+## File Format Auto-Detection Logic
+
+Timber detects format from file extension and content:
+
+1. .onnx → onnx
+2. .pkl / .pickle → sklearn
+3. .txt / .model / .lgb → lightgbm
+4. .json → inspect content:
+   a. contains "oblivious_trees" key → catboost
+   b. contains "learner" key → xgboost
+   c. fallback → xgboost
+
+Use --format to override when auto-detection fails.
+
+---
+
+## Frequently Asked Questions
+
+Q: Can I use Timber with a model trained on GPU?
+A: Yes. Timber reads the saved model file format, not the training device.
+   Save your XGBoost GPU model with booster.save_model("model.json") and
+   timber load it normally.
+
+Q: Does Timber support regression?
+A: Yes. reg:squarederror and reg:logistic objectives are supported.
+   outputs[0] is the raw predicted value for regression.
+
+Q: Does Timber support multiclass classification?
+A: Yes. multi:softprob and multi:softmax are both supported.
+   For K classes, outputs is shape [n_samples, K] with per-class probabilities.
+
+Q: What Python versions are supported?
+A: Python 3.10, 3.11, and 3.12. Tested on Ubuntu and macOS.
+
+Q: What C compiler is required?
+A: gcc (preferred) or clang. Must be on PATH. The generated code is
+   standard C99 with no compiler-specific extensions.
+
+Q: Can I deploy the compiled model without Python?
+A: Yes. After `timber compile`, the output directory contains pure C99.
+   Build with: gcc -O2 -o predict main.c model.c model_data.c -lm
+   No Python or Timber needed at runtime.
+
+Q: Can I embed the generated C in a C++ project?
+A: Yes. The header uses extern "C" guards for C++ compatibility.
+
+Q: Is the HTTP server thread-safe?
+A: The compiled model context is read-only after init, so concurrent
+   requests are safe. The HTTP server processes requests serially in the
+   current version (no thread pool).
+
+Q: How do I update a model?
+A: Run timber load with the same --name to overwrite. The old compiled
+   artifact is replaced atomically.
+
+Q: What is the model store format?
+A: ~/.timber/registry.json (JSON) + ~/.timber/models/<name>/ directories.
+   Override location with TIMBER_HOME environment variable.
+
+Q: Can Timber load a model from a URL directly?
+A: Yes. timber load <url> --name my-model or timber pull <url> --name my-model.
+   Downloads are cached in ~/.timber/cache/ by URL hash.
+
+---
+
+## Package Structure
+
+```
+timber/
+├── __init__.py               # __version__ = "0.2.0"
+├── cli.py                    # Click CLI entry point
+├── serve.py                  # HTTP inference server (stdlib http.server)
+├── store.py                  # ModelStore, ModelInfo, atomic registry
+├── downloader.py             # HTTPS streaming downloader with cache
+├── ui.py                     # Rich terminal UI components
+├── ir/
+│   └── model.py              # TimberIR, TreeEnsembleStage, Tree, TreeNode, ...
+├── frontends/
+│   ├── auto_detect.py        # format detection and dispatch
+│   ├── xgboost_parser.py     # XGBoost JSON → IR
+│   ├── lightgbm_parser.py    # LightGBM text → IR
+│   ├── sklearn_parser.py     # scikit-learn pickle → IR
+│   ├── onnx_parser.py        # ONNX ML opset → IR
+│   └── catboost_parser.py    # CatBoost JSON → IR
+├── optimizer/
+│   └── pipeline.py           # 6-pass optimizer pipeline
+├── codegen/
+│   ├── c99.py                # C99Emitter → model.c / model.h / model_data.c
+│   ├── wasm.py               # WebAssembly emitter
+│   └── misra_c.py            # MISRA-C emitter (roadmap)
+├── runtime/
+│   └── predictor.py          # TimberPredictor (ctypes-based Python wrapper)
+└── audit/
+    └── report.py             # Audit trail generation
+```
+
+---
+
+## Compiler Pipeline (detailed)
+
+Step 1 — Parse
+  Input: model file path + format hint
+  Output: TimberIR (framework-agnostic typed AST)
+  Code: timber/frontends/<framework>_parser.py
+
+Step 2 — Optimize
+  Input: TimberIR
+  Output: (optimized TimberIR, OptimizationReport)
+  Code: timber/optimizer/pipeline.py
+  Passes: dead_leaf_elimination, constant_feature_detection,
+          threshold_quantization, frequency_branch_sort,
+          pipeline_fusion, vectorization_analysis
+
+Step 3 — Emit
+  Input: TimberIR + TargetSpec
+  Output: C99Output (model.c, model.h, model_data.c, Makefile, CMakeLists.txt)
+  Code: timber/codegen/c99.py
+
+Step 4 — Compile
+  Input: C99Output written to temp directory
+  Output: libtimber_model.so (Linux) or libtimber_model.dylib (macOS)
+  Method: subprocess call to gcc/clang with -O2 -shared -fPIC -lm
+
+Step 5 — Store / Serve
+  Input: compiled artifact + registry entry
+  Code: timber/store.py (store), timber/serve.py (HTTP server)
+
+---
+
+## Generated Code Structure
+
+model_data.c contains static const arrays for all tree nodes:
+- tree_<id>_features[N]      — int32 feature indices (-1 = leaf)
+- tree_<id>_thresholds[N]    — float split thresholds
+- tree_<id>_left[N]          — int32 left child indices
+- tree_<id>_right[N]         — int32 right child indices
+- tree_<id>_leaves[N]        — float leaf values
+- tree_<id>_is_leaf[N]       — int8 leaf flags
+- tree_<id>_default_left[N]  — int8 NaN routing flags
+- TIMBER_BASE_SCORE           — float scalar base score (binary/regression)
+- TIMBER_CLASS_BASE_SCORES[K] — double array, multiclass per-class base scores
+
+model.c contains:
+- traverse_tree() — iterative (no recursion) tree traversal
+- timber_infer_single() — unrolled per-tree calls, accumulation, output transform
+- timber_infer() — batch loop calling timber_infer_single per sample
+- timber_init() / timber_free() / timber_strerror() / timber_abi_version()
+
+Output transforms applied in timber_infer_single:
+- binary:logistic / reg:logistic → sigmoid: 1 / (1 + exp(-sum))
+- multi:softprob → softmax (double precision, numerically stable)
+- reg:squarederror → identity (raw sum)
+
+---
+
+## Versioning
+
+Timber follows Semantic Versioning (semver.org):
+- MAJOR: breaking changes to public API, CLI flags, or C ABI
+- MINOR: backward-compatible new features
+- PATCH: backward-compatible bug fixes
+
+The C ABI version is tracked separately via TIMBER_ABI_VERSION in model.h.
+Current C ABI version: 1.
+
+---
+
+## Citation
+
+@misc{royce2026timber,
+  title        = {Timber: Compiling Classical Machine Learning Models to Native Inference Binaries},
+  author       = {Kossiso Royce},
+  year         = {2026},
+  howpublished = {GitHub repository and technical paper},
+  institution  = {Electricsheep Africa},
+  url          = {https://github.com/kossisoroyce/timber}
+}

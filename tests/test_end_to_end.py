@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pytest
 from pathlib import Path
+import timber
 
 from timber.frontends.xgboost_parser import _parse_xgboost_dict
 from timber.frontends.lightgbm_parser import _parse_lightgbm_text
@@ -198,7 +199,7 @@ class TestEndToEndXGBoost:
 
         report_dict = report.to_dict()
         assert report_dict["timber_audit_report_version"] == "0.1"
-        assert report_dict["compiler"]["timber_version"] == "0.1.0"
+        assert report_dict["compiler"]["timber_version"] == timber.__version__
         assert "model_summary" in report_dict
         assert "optimization" in report_dict
 
