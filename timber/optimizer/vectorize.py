@@ -8,11 +8,9 @@ structure similarity and marks feature access patterns for prefetch optimization
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
-import numpy as np
-
-from timber.ir.model import TimberIR, Tree, TreeEnsembleStage, TreeNode
+from timber.ir.model import TimberIR, Tree
 
 
 @dataclass

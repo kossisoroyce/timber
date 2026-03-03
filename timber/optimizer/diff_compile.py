@@ -12,11 +12,10 @@ This enables incremental recompilation, reducing build time for model updates.
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from timber.ir.model import TimberIR, Tree, TreeNode
+from timber.ir.model import TimberIR, Tree
 
 
 @dataclass

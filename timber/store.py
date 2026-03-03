@@ -12,13 +12,27 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
-import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Callable, Optional
+
+
+@dataclass
+class LoadCallbacks:
+    """Optional progress hooks for each stage of model loading."""
+    on_detect:        Callable[[str], None]                  = field(default=lambda fmt: None)
+    on_parse_start:   Callable[[], None]                     = field(default=lambda: None)
+    on_parse_done:    Callable[[int, int, str], None]        = field(default=lambda t, f, o: None)
+    on_optimize_start: Callable[[], None]                    = field(default=lambda: None)
+    on_optimize_done: Callable[[list], None]                 = field(default=lambda passes: None)
+    on_emit_start:    Callable[[], None]                     = field(default=lambda: None)
+    on_emit_done:     Callable[[Path], None]                 = field(default=lambda d: None)
+    on_compile_start: Callable[[], None]                     = field(default=lambda: None)
+    on_compile_done:  Callable[[Optional[Path]], None]       = field(default=lambda p: None)
 
 
 def _default_home() -> Path:
@@ -63,17 +77,26 @@ class ModelStore:
 
     def _load_registry(self) -> dict[str, dict]:
         if self.registry_path.exists():
-            return json.loads(self.registry_path.read_text())
+            try:
+                return json.loads(self.registry_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                # Corrupted or partially-written registry — start fresh.
+                return {}
         return {}
 
     def _save_registry(self, registry: dict[str, dict]):
-        self.registry_path.write_text(json.dumps(registry, indent=2))
+        # Atomic write: write to a temp file alongside the registry, then rename.
+        # Prevents a partial write from corrupting the registry on crash/kill.
+        tmp = self.registry_path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+        tmp.replace(self.registry_path)
 
     def load_model(
         self,
         source_path: str | Path,
         name: str | None = None,
         format_hint: str | None = None,
+        callbacks: Optional[LoadCallbacks] = None,
     ) -> ModelInfo:
         """Compile and cache a model in the store.
 
@@ -85,9 +108,11 @@ class ModelStore:
         Returns:
             ModelInfo for the loaded model.
         """
+        from timber.codegen.c99 import C99Emitter
         from timber.frontends.auto_detect import detect_format, parse_model
         from timber.optimizer.pipeline import OptimizerPipeline
-        from timber.codegen.c99 import C99Emitter
+
+        cb = callbacks or LoadCallbacks()
 
         source_path = Path(source_path).resolve()
         if not source_path.exists():
@@ -95,21 +120,31 @@ class ModelStore:
 
         if name is None:
             name = source_path.stem
-        # Sanitize name
-        name = name.replace(" ", "_").replace("/", "_").lower()
+        # Sanitize: allow only a-z, 0-9, hyphens, underscores.
+        # Prevents path traversal (e.g. "../evil") and shell-unsafe characters.
+        name = re.sub(r"[^a-z0-9_-]", "_", name.lower()).strip("_-") or "model"
 
         fmt = format_hint or detect_format(str(source_path))
         if fmt is None:
             raise ValueError(f"Cannot detect format for '{source_path}'. Use --format.")
+        cb.on_detect(fmt)
 
         # Parse
+        cb.on_parse_start()
         ir = parse_model(str(source_path), format_hint=fmt)
         ensemble = ir.get_tree_ensemble()
+        cb.on_parse_done(
+            ensemble.n_trees if ensemble else 0,
+            ensemble.n_features if ensemble else 0,
+            ensemble.objective.value if ensemble else "unknown",
+        )
 
         # Optimize
+        cb.on_optimize_start()
         opt_result = OptimizerPipeline().run(ir)
         ir = opt_result.ir
         ensemble = ir.get_tree_ensemble()
+        cb.on_optimize_done(opt_result.passes)
 
         # Create model directory
         model_dir = self.models_dir / name
@@ -121,13 +156,20 @@ class ModelStore:
         lib_dir = model_dir / "lib"
 
         # Emit C99
+        cb.on_emit_start()
         emitter = C99Emitter()
         output = emitter.emit(ir)
         output.write(compiled_dir)
+        cb.on_emit_done(compiled_dir)
 
         # Compile shared library
+        cb.on_compile_start()
         lib_dir.mkdir(parents=True, exist_ok=True)
         lib_path = self._compile_shared_lib(compiled_dir, lib_dir)
+        cb.on_compile_done(lib_path)
+
+        if ensemble is None:
+            raise ValueError("Model produced no tree ensemble after optimization.")
 
         n_outputs = 1 if ensemble.n_classes <= 2 else ensemble.n_classes
 

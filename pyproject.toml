@@ -32,6 +32,8 @@ classifiers = [
 dependencies = [
     "click>=8.1",
     "numpy>=1.24",
+    "rich>=13.0",
+    "requests>=2.28",
     "tomli>=2.0;python_version<'3.11'",
 ]
 
@@ -40,10 +42,24 @@ Homepage = "https://github.com/kossisoroyce/timber"
 Documentation = "https://kossisoroyce.github.io/timber/"
 Repository = "https://github.com/kossisoroyce/timber"
 Issues = "https://github.com/kossisoroyce/timber/issues"
+Changelog = "https://github.com/kossisoroyce/timber/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+serve = [
+    "rich>=13.0",
+    "requests>=2.28",
+]
+full = [
+    "rich>=13.0",
+    "requests>=2.28",
+    "xgboost>=1.7",
+    "lightgbm>=4.0",
+    "scikit-learn>=1.3",
+]
 dev = [
     "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
     "xgboost>=1.7",
     "lightgbm>=4.0",
     "scikit-learn>=1.3",
@@ -62,3 +78,23 @@ timber = ["py.typed"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["timber"]
+omit = ["timber/audit/*", "tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "F841"]

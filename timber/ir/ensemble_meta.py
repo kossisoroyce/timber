@@ -8,7 +8,7 @@ This module extends the Timber IR to support:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 from timber.ir.model import PipelineStage, TimberIR
 

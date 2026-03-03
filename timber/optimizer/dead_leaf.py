@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from timber.ir.model import TimberIR, TreeEnsembleStage, TreeNode
+from timber.ir.model import TimberIR, TreeNode
 
 
 def dead_leaf_elimination(

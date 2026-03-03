@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from timber.ir.model import (
     Objective,
@@ -61,7 +60,7 @@ class WasmEmitter:
             f'  ;; Trees: {ensemble.n_trees}, Features: {n_features}, Outputs: {n_outputs}',
             '',
             '  ;; Linear memory: inputs at offset 0, outputs after inputs',
-            f'  (memory (export "memory") 1)',
+            '  (memory (export "memory") 1)',
             '',
         ]
 

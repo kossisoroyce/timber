@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from timber.ir.model import TimberIR, TreeEnsembleStage
+from timber.ir.model import TimberIR
 
 
 def threshold_quantization(
@@ -110,7 +110,6 @@ def _classify_precision(thresholds: list[float]) -> str:
             if t == 0.0:
                 continue
             # Check if float16 round-trip preserves the value
-            import struct
             try:
                 import numpy as np
                 f16 = np.float16(t)

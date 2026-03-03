@@ -10,19 +10,15 @@ Output guarantees:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from timber.ir.model import (
-    TimberIR,
-    TreeEnsembleStage,
-    ScalerStage,
-    ImputerStage,
-    LinearStage,
     Objective,
     PrecisionMode,
+    TimberIR,
+    TreeEnsembleStage,
 )
 
 
@@ -162,18 +158,18 @@ class C99Emitter:
             " *",
             " *  Returns 0 on success, non-zero on error.",
             " */",
-            f"int timber_infer(",
+            "int timber_infer(",
             f"    const {float_type}*  inputs,",
-            f"    int                  n_samples,",
+            "    int                  n_samples,",
             f"    {float_type}*        outputs,",
-            f"    const TimberCtx*     ctx",
+            "    const TimberCtx*     ctx",
             ");",
             "",
             "/* Single-sample inference convenience wrapper. */",
-            f"int timber_infer_single(",
+            "int timber_infer_single(",
             f"    const {float_type}  inputs[TIMBER_N_FEATURES],",
             f"    {float_type}        outputs[TIMBER_N_OUTPUTS],",
-            f"    const TimberCtx*    ctx",
+            "    const TimberCtx*    ctx",
             ");",
             "",
             "#ifdef __cplusplus",
@@ -353,10 +349,10 @@ class C99Emitter:
 
         # Single-sample inference (unrolled tree calls)
         lines.extend([
-            f"int timber_infer_single(",
+            "int timber_infer_single(",
             f"    const {float_type}  inputs[TIMBER_N_FEATURES],",
             f"    {float_type}        outputs[TIMBER_N_OUTPUTS],",
-            f"    const TimberCtx*    ctx",
+            "    const TimberCtx*    ctx",
             ") {",
             "    (void)ctx;",
         ])
@@ -381,18 +377,18 @@ class C99Emitter:
 
             # Softmax in double precision
             lines.append("")
-            lines.append(f"    {{ /* softmax */")
-            lines.append(f"        double max_val = scores[0];")
+            lines.append("    { /* softmax */")
+            lines.append("        double max_val = scores[0];")
             lines.append(f"        for (c = 1; c < {ensemble.n_classes}; c++)")
-            lines.append(f"            if (scores[c] > max_val) max_val = scores[c];")
-            lines.append(f"        double denom = 0.0;")
+            lines.append("            if (scores[c] > max_val) max_val = scores[c];")
+            lines.append("        double denom = 0.0;")
             lines.append(f"        for (c = 0; c < {ensemble.n_classes}; c++) {{")
-            lines.append(f"            scores[c] = exp(scores[c] - max_val);")
-            lines.append(f"            denom += scores[c];")
-            lines.append(f"        }}")
+            lines.append("            scores[c] = exp(scores[c] - max_val);")
+            lines.append("            denom += scores[c];")
+            lines.append("        }")
             lines.append(f"        for (c = 0; c < {ensemble.n_classes}; c++)")
             lines.append(f"            outputs[c] = ({float_type})(scores[c] / denom);")
-            lines.append(f"    }}")
+            lines.append("    }")
         else:
             # Binary classification or regression: use double accumulator for precision
             lines.append("    double sum = (double)TIMBER_BASE_SCORE;")
@@ -423,21 +419,21 @@ class C99Emitter:
 
         # Batched inference
         lines.extend([
-            f"int timber_infer(",
+            "int timber_infer(",
             f"    const {float_type}*  inputs,",
-            f"    int                  n_samples,",
+            "    int                  n_samples,",
             f"    {float_type}*        outputs,",
-            f"    const TimberCtx*     ctx",
+            "    const TimberCtx*     ctx",
             ") {",
             "    int i;",
             "    if (inputs == NULL || outputs == NULL) return TIMBER_ERR_NULL;",
             "    if (n_samples <= 0) return TIMBER_ERR_BOUNDS;",
             "",
             "    for (i = 0; i < n_samples; i++) {",
-            f"        int rc = timber_infer_single(",
-            f"            inputs + i * TIMBER_N_FEATURES,",
-            f"            outputs + i * TIMBER_N_OUTPUTS,",
-            f"            ctx",
+            "        int rc = timber_infer_single(",
+            "            inputs + i * TIMBER_N_FEATURES,",
+            "            outputs + i * TIMBER_N_OUTPUTS,",
+            "            ctx",
             "        );",
             "        if (rc != 0) return rc;",
             "    }",

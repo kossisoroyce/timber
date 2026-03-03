@@ -1,8 +1,10 @@
 # Timber
 
+[![CI](https://github.com/kossisoroyce/timber/actions/workflows/ci.yml/badge.svg)](https://github.com/kossisoroyce/timber/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/timber-compiler.svg)](https://pypi.org/project/timber-compiler/)
 [![Python versions](https://img.shields.io/pypi/pyversions/timber-compiler.svg)](https://pypi.org/project/timber-compiler/)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![codecov](https://codecov.io/gh/kossisoroyce/timber/branch/main/graph/badge.svg)](https://codecov.io/gh/kossisoroyce/timber)
 
 **Ollama for classical ML models.**
 
@@ -12,7 +14,7 @@ Timber compiles trained tree-based models (XGBoost, LightGBM, scikit-learn, CatB
 - Native latency (microseconds)
 - One command to load, one command to serve
 
-📚 Docs: https://kossisoroyce.github.io/timber/
+📚 [Docs](https://kossisoroyce.github.io/timber/) · [Changelog](CHANGELOG.md) · [PyPI](https://pypi.org/project/timber-compiler/)
 
 ## Who is this for?
 

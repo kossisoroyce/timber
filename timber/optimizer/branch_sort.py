@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from timber.ir.model import TimberIR, TreeEnsembleStage, TreeNode
+from timber.ir.model import TimberIR, TreeNode
 
 
 def frequency_branch_sort(

@@ -1,22 +1,22 @@
 """Timber Intermediate Representation."""
 
 from timber.ir.model import (
-    TimberIR,
-    Schema,
+    AggregatorStage,
+    EncoderStage,
     Field,
     FieldType,
-    Metadata,
-    PipelineStage,
-    ScalerStage,
-    EncoderStage,
     ImputerStage,
-    TreeEnsembleStage,
     LinearStage,
-    AggregatorStage,
-    TreeNode,
-    Tree,
+    Metadata,
     Objective,
+    PipelineStage,
     PrecisionMode,
+    ScalerStage,
+    Schema,
+    TimberIR,
+    Tree,
+    TreeEnsembleStage,
+    TreeNode,
 )
 
 __all__ = [

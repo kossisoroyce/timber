@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import ctypes
+import shutil
 import subprocess
 import tempfile
-import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -110,7 +110,7 @@ class TimberPredictor:
             outputs = outputs.ravel()
 
         if single:
-            return outputs[0] if outputs.ndim == 1 else outputs[0]
+            return outputs[0]
 
         return outputs
 
@@ -181,7 +181,13 @@ class TimberPredictor:
             )
 
         # Parse n_features and n_outputs from header
-        header = (artifact_dir / "model.h").read_text()
+        header_path = artifact_dir / "model.h"
+        if not header_path.exists():
+            raise FileNotFoundError(
+                f"model.h not found in {artifact_dir}. "
+                "The artifact directory may be incomplete or corrupted."
+            )
+        header = header_path.read_text()
         n_features = _parse_define(header, "TIMBER_N_FEATURES")
         n_outputs = _parse_define(header, "TIMBER_N_OUTPUTS")
         n_trees = _parse_define(header, "TIMBER_N_TREES")
@@ -207,9 +213,9 @@ class TimberPredictor:
         Returns:
             TimberPredictor instance ready for inference.
         """
+        from timber.codegen.c99 import C99Emitter, TargetSpec
         from timber.frontends import detect_format, parse_model
         from timber.optimizer.pipeline import OptimizerPipeline
-        from timber.codegen.c99 import C99Emitter, TargetSpec
 
         model_path = Path(model_path)
         detected = format_hint or detect_format(str(model_path))
@@ -239,8 +245,12 @@ class TimberPredictor:
         emitter = C99Emitter(target=target_spec)
         output = emitter.emit(ir)
 
-        # Write to temp dir and build
+        # Write to temp dir, build, and schedule cleanup.
+        # The shared lib file must remain on disk while ctypes holds it open,
+        # so we register cleanup via atexit rather than deleting immediately.
+        import atexit
         tmp_dir = Path(tempfile.mkdtemp(prefix="timber_"))
+        atexit.register(shutil.rmtree, tmp_dir, True)
         output.write(tmp_dir)
 
         return cls.from_artifact(tmp_dir, build=True)

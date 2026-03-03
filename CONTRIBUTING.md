@@ -25,7 +25,7 @@ pytest tests/ -v
 ## Running Tests
 
 ```bash
-# Full suite (144 tests)
+# Full suite (146 tests)
 pytest tests/ -v
 
 # Specific test file
@@ -104,7 +104,7 @@ timber/
 
 1. Fork the repo and create a feature branch from `main`
 2. Write tests for your changes
-3. Ensure all 144+ tests pass: `pytest tests/ -v`
+3. Ensure all 146+ tests pass: `pytest tests/ -v`
 4. Keep commits focused and well-described
 5. Open a PR with a clear description of what and why
 

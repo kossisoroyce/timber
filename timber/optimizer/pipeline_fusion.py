@@ -10,10 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 from timber.ir.model import (
-    TimberIR,
     ScalerStage,
+    TimberIR,
     TreeEnsembleStage,
-    PipelineStage,
 )
 
 

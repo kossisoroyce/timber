@@ -12,8 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from timber.ir.model import (
-    Field, FieldType, Metadata, Objective, Schema,
-    TimberIR, Tree, TreeEnsembleStage, TreeNode,
+    Field,
+    FieldType,
+    Metadata,
+    Objective,
+    Schema,
+    TimberIR,
+    Tree,
+    TreeEnsembleStage,
+    TreeNode,
 )
 
 _OBJECTIVE_MAP: dict[str, Objective] = {

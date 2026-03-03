@@ -63,11 +63,11 @@ class OptimizerPipeline:
 
     def run(self, ir: TimberIR) -> OptimizationResult:
         """Run all optimizer passes on the given IR and return an OptimizationResult."""
-        from timber.optimizer.dead_leaf import dead_leaf_elimination
-        from timber.optimizer.constant_feature import constant_feature_detection
-        from timber.optimizer.threshold_quant import threshold_quantization
         from timber.optimizer.branch_sort import frequency_branch_sort
+        from timber.optimizer.constant_feature import constant_feature_detection
+        from timber.optimizer.dead_leaf import dead_leaf_elimination
         from timber.optimizer.pipeline_fusion import pipeline_fusion
+        from timber.optimizer.threshold_quant import threshold_quantization
 
         working = ir.deep_copy()
         results: list[PassResult] = []

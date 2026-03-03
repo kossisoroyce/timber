@@ -13,8 +13,6 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from timber.ir.model import (
     Field,
     FieldType,
@@ -45,7 +43,6 @@ def parse_onnx_model(path: str | Path) -> TimberIR:
 
 def _convert_onnx(model: Any, artifact_hash: str = "") -> TimberIR:
     """Convert an ONNX model with tree ensemble nodes to Timber IR."""
-    import onnx
 
     graph = model.graph
 

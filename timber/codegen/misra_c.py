@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 from timber.codegen.c99 import C99Emitter, C99Output, TargetSpec
 from timber.ir.model import TimberIR

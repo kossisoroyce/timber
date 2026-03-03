@@ -8,7 +8,6 @@ from typing import Optional
 
 from timber.ir.model import TimberIR
 
-
 SUPPORTED_FORMATS = ("xgboost", "lightgbm", "sklearn", "onnx", "catboost")
 
 

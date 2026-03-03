@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
-from typing import Any
 
 from timber.ir.model import (
     Field,
@@ -18,7 +16,6 @@ from timber.ir.model import (
     TreeEnsembleStage,
     TreeNode,
 )
-
 
 _OBJECTIVE_MAP: dict[str, Objective] = {
     "binary": Objective.BINARY_CLASSIFICATION,

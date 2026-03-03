@@ -18,24 +18,28 @@ from __future__ import annotations
 
 import json
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 
 import numpy as np
 
+import timber
 from timber.runtime.predictor import TimberPredictor
 
+_MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MB hard cap on request bodies
 
-_BANNER = r"""
+
+def _make_banner() -> str:
+    return (
+        r"""
   _____ _           _
  |_   _(_)_ __ ___ | |__   ___ _ __
    | | | | '_ ` _ \| '_ \ / _ \ '__|
    | | | | | | | | | |_) |  __/ |
    |_| |_|_| |_| |_|_.__/ \___|_|
-
-  Classical ML Inference Server v0.1.0
 """
+        + f"\n  Classical ML Inference Server v{timber.__version__}\n"
+    )
 
 
 class TimberAPIHandler(BaseHTTPRequestHandler):
@@ -85,7 +89,14 @@ class TimberAPIHandler(BaseHTTPRequestHandler):
 
     def _handle_predict(self):
         try:
-            content_length = int(self.headers.get("Content-Length", 0))
+            try:
+                content_length = int(self.headers.get("Content-Length") or 0)
+            except (ValueError, TypeError):
+                self._json_response(400, {"error": "invalid Content-Length header"})
+                return
+            if content_length > _MAX_BODY_BYTES:
+                self._json_response(413, {"error": f"request body too large (max {_MAX_BODY_BYTES // (1024*1024)} MB)"})
+                return
             body = self.rfile.read(content_length)
             data = json.loads(body)
 
@@ -173,18 +184,18 @@ def serve(
     TimberAPIHandler.loaded_models = {model_name: {"info": model_info, "predictor": predictor}}
 
     server = HTTPServer((host, port), TimberAPIHandler)
-    print(_BANNER)
+    print(_make_banner())
     print(f"  Listening on http://{host}:{port}")
     print(f"  Model:    {model_name}")
     print(f"  Trees:    {model_info.get('n_trees', '?')}")
     print(f"  Features: {model_info.get('n_features', '?')}")
     print()
-    print(f"  Endpoints:")
-    print(f"    POST /api/predict  — run inference")
-    print(f"    GET  /api/models   — list models")
-    print(f"    GET  /api/health   — health check")
+    print("  Endpoints:")
+    print("    POST /api/predict  — run inference")
+    print("    GET  /api/models   — list models")
+    print("    GET  /api/health   — health check")
     print()
-    print(f"  Example:")
+    print("  Example:")
     print(f"    curl http://localhost:{port}/api/predict \\")
     print(f'      -d \'{{"model": "{model_name}", "inputs": [[1.0, 2.0, ...]]}}\'')
     print()

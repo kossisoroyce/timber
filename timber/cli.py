@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -12,11 +11,119 @@ import click
 import numpy as np
 
 import timber
+from timber.audit.report import AuditReport
 from timber.codegen.c99 import C99Emitter, TargetSpec
 from timber.frontends import detect_format, parse_model
 from timber.ir.model import PrecisionMode, TimberIR
 from timber.optimizer.pipeline import OptimizerPipeline
-from timber.audit.report import AuditReport
+
+
+def _con():
+    """Return a fresh Rich Console (created at call-time so it picks up any stdout patching)."""
+    from rich.console import Console
+    return Console(highlight=False)
+
+
+def _rich_header(con, subtitle: str = "") -> None:
+    from rich.panel import Panel
+    from rich.text import Text
+    t = Text()
+    t.append("🌲 Timber ", style="bold green")
+    t.append(f"v{timber.__version__}", style="dim green")
+    if subtitle:
+        t.append(f"  —  {subtitle}", style="dim")
+    con.print(Panel(t, border_style="green", padding=(0, 2)))
+    con.print()
+
+
+def _rich_section(con, title: str) -> None:
+    from rich.rule import Rule
+    con.print(Rule(f"  {title}  ", style="dim", align="left"))
+    con.print()
+
+
+def _rich_ok(con, label: str, detail: str = "") -> None:
+    from rich.text import Text
+    t = Text()
+    t.append("  ✓ ", style="bold green")
+    t.append(f"{label:<24}", style="bold")
+    if detail:
+        t.append(detail, style="dim")
+    con.print(t)
+
+
+def _rich_skip(con, label: str, detail: str = "") -> None:
+    from rich.text import Text
+    t = Text()
+    t.append("  ─ ", style="dim")
+    t.append(f"{label:<24}", style="dim bold")
+    if detail:
+        t.append(detail, style="dim")
+    con.print(t)
+
+
+def _build_load_callbacks(con, status):
+    """Return a LoadCallbacks instance that drives rich terminal output."""
+    from timber.store import LoadCallbacks
+
+    def on_detect(fmt):
+        _rich_ok(con, "Format detected", fmt)
+
+    def on_parse_start():
+        status.update("  [bold]Parsing model...[/bold]")
+        status.start()
+
+    def on_parse_done(n_trees, n_features, objective):
+        status.stop()
+        _rich_ok(con, "Parsed model", f"{n_trees} trees · {n_features} features · {objective}")
+
+    def on_optimize_start():
+        status.update("  [bold]Optimizing...[/bold]")
+        status.start()
+
+    def on_optimize_done(passes):
+        status.stop()
+        applied = sum(1 for p in passes if p.changed)
+        total = len(passes)
+        _rich_ok(con, "Optimized", f"{applied}/{total} passes applied")
+
+    def on_emit_start():
+        status.update("  [bold]Generating C99 code...[/bold]")
+        status.start()
+
+    def on_emit_done(compiled_dir):
+        status.stop()
+        model_c = Path(compiled_dir) / "model.c"
+        if model_c.exists():
+            with open(model_c) as _f:
+                n_lines = sum(1 for _ in _f)
+        else:
+            n_lines = 0
+        _rich_ok(con, "Generated C99", f"{n_lines:,} lines")
+
+    def on_compile_start():
+        status.update("  [bold]Compiling binary...[/bold]")
+        status.start()
+
+    def on_compile_done(lib_path):
+        status.stop()
+        if lib_path and Path(lib_path).exists():
+            size = Path(lib_path).stat().st_size
+            _rich_ok(con, "Compiled binary", _fmt_bytes(size))
+        else:
+            _rich_skip(con, "Compiled binary", "gcc not found — Python fallback will be used")
+
+    return LoadCallbacks(
+        on_detect=on_detect,
+        on_parse_start=on_parse_start,
+        on_parse_done=on_parse_done,
+        on_optimize_start=on_optimize_start,
+        on_optimize_done=on_optimize_done,
+        on_emit_start=on_emit_start,
+        on_emit_done=on_emit_done,
+        on_compile_start=on_compile_start,
+        on_compile_done=on_compile_done,
+    )
 
 
 def _load_target_spec(path: Optional[str]) -> tuple[TargetSpec, dict]:
@@ -213,7 +320,7 @@ def inspect(model, fmt):
         sys.exit(1)
 
     summary = ir.summary()
-    click.echo(f"Timber Model Inspector")
+    click.echo("Timber Model Inspector")
     click.echo(f"{'='*50}")
     click.echo(f"Source file:     {model}")
     click.echo(f"Format:          {detected}")
@@ -234,7 +341,7 @@ def inspect(model, fmt):
     est_code_bytes = summary.get("n_trees", 0) * 500 + 4096
     est_total = est_data_bytes + est_code_bytes
 
-    click.echo(f"\nEstimated compiled size:")
+    click.echo("\nEstimated compiled size:")
     click.echo(f"  Data:   {_fmt_bytes(est_data_bytes)}")
     click.echo(f"  Code:   {_fmt_bytes(est_code_bytes)}")
     click.echo(f"  Total:  {_fmt_bytes(est_total)}")
@@ -259,7 +366,7 @@ def validate(artifact, reference, data_path, fmt, tolerance):
     Runs the compiled C code and original framework side-by-side and
     reports maximum absolute error, mean absolute error, and divergent samples.
     """
-    click.echo(f"Timber Validator")
+    click.echo("Timber Validator")
     click.echo(f"{'='*50}")
 
     # Load reference IR
@@ -323,13 +430,13 @@ def validate(artifact, reference, data_path, fmt, tolerance):
             mean_err = float(np.mean(errors))
             divergent = int(np.sum(errors > tolerance))
 
-            click.echo(f"\nResults:")
+            click.echo("\nResults:")
             click.echo(f"  Max absolute error:  {max_err:.2e}")
             click.echo(f"  Mean absolute error: {mean_err:.2e}")
             click.echo(f"  Divergent samples:   {divergent}/{n_samples}")
 
             if divergent == 0:
-                click.echo(f"\n  PASS — all predictions within tolerance")
+                click.echo("\n  PASS — all predictions within tolerance")
             else:
                 click.echo(f"\n  FAIL — {divergent} samples exceed tolerance {tolerance}")
                 sys.exit(1)
@@ -353,7 +460,7 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
 
     Reports latency (P50/P95/P99), throughput, and memory usage.
     """
-    click.echo(f"Timber Benchmark")
+    click.echo("Timber Benchmark")
     click.echo(f"{'='*50}")
 
     # Try loading as compiled IR first, then as raw model
@@ -415,7 +522,7 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
             batch = np.tile(data, (repeats, 1))[:bs]
 
         # Warmup
-        for _ in range(min(warmup_iters, 100)):
+        for _ in range(warmup_iters):
             for i in range(len(batch)):
                 _ir_predict_single(ensemble, batch[i])
 
@@ -498,31 +605,90 @@ def _fmt_bytes(n: int) -> str:
         return f"{n / (1024 * 1024):.1f} MB"
 
 
+def _run_load(
+    source: str,
+    name: Optional[str],
+    fmt: Optional[str],
+    force: bool = False,
+    con=None,
+) -> "ModelInfo":  # noqa: F821
+    """Shared logic for load + pull + serve-with-source. Returns ModelInfo."""
+    from rich.status import Status
+
+    from timber.downloader import download_model, is_url
+    from timber.store import ModelStore
+
+    if con is None:
+        con = _con()
+
+    store = ModelStore()
+    model_path = source
+
+    if is_url(source):
+        _rich_section(con, "Pulling Model")
+        con.print(f"  [dim]Source  [/dim] [cyan]{source}[/cyan]")
+        con.print()
+        try:
+            cached = download_model(source, store.home, force=force, console=con)
+        except Exception as exc:
+            con.print(f"  [bold red]✗ Download failed:[/bold red] {exc}")
+            raise
+        con.print()
+        _rich_ok(con, "Downloaded", str(cached))
+        con.print()
+        model_path = str(cached)
+        if name is None:
+            name = Path(cached).stem
+    else:
+        path = Path(source)
+        if not path.exists():
+            raise FileNotFoundError(f"No such file: '{source}'")
+
+    _rich_section(con, "Processing Model")
+
+    status = Status("", console=con, spinner="dots")
+    callbacks = _build_load_callbacks(con, status)
+
+    try:
+        info = store.load_model(model_path, name=name, format_hint=fmt, callbacks=callbacks)
+    except Exception:
+        try:
+            status.stop()
+        except Exception:
+            pass
+        raise
+
+    con.print()
+    con.print(f"  [bold green]✓ Model ready[/bold green]  [bold cyan]{info.name}[/bold cyan]")
+    con.print()
+    return info
+
+
 @main.command()
-@click.argument("model_path", type=click.Path(exists=True))
+@click.argument("source")
 @click.option("--name", default=None, help="Name to register the model as (default: filename stem)")
 @click.option("--format", "fmt", default=None, help="Input format hint (xgboost, lightgbm, sklearn, ...)")
-def load(model_path, name, fmt):
-    """Compile and cache a model locally.
+@click.option("--force", is_flag=True, default=False, help="Re-download even if URL is cached")
+def load(source, name, fmt, force):
+    """Compile and cache a model locally. Accepts a file path or HTTPS URL.
 
     \b
     Examples:
         timber load my_model.json
         timber load my_model.json --name fraud-detector
         timber load model.pkl --format sklearn
+        timber load https://example.com/fraud-detector.json --name fraud-v1
     """
-    from timber.store import ModelStore
-
-    store = ModelStore()
-    click.echo(f"Timber v{timber.__version__} — loading model...")
+    con = _con()
+    _rich_header(con, "Classical ML Inference Compiler")
 
     try:
-        info = store.load_model(model_path, name=name, format_hint=fmt)
+        info = _run_load(source, name=name, fmt=fmt, force=force, con=con)
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
-    click.echo(f"\nModel loaded successfully:")
+    click.echo("\nModel loaded successfully:")
     click.echo(f"  Name:      {info.name}")
     click.echo(f"  Format:    {info.format}")
     click.echo(f"  Framework: {info.framework}")
@@ -531,20 +697,51 @@ def load(model_path, name, fmt):
     click.echo(f"  Objective: {info.objective}")
     click.echo(f"  Compiled:  {'yes' if info.compiled else 'no (gcc not found)'}")
     click.echo(f"  Size:      {_fmt_bytes(info.size_bytes)}")
-    click.echo(f"\nRun inference with:")
+    click.echo("\nRun inference with:")
     click.echo(f"  timber serve {info.name}")
+
+
+@main.command()
+@click.argument("source")
+@click.option("--name", default=None, help="Name to register the model as (default: filename stem)")
+@click.option("--format", "fmt", default=None, help="Input format hint (xgboost, lightgbm, sklearn, ...)")
+@click.option("--force", is_flag=True, default=False, help="Re-download even if URL is cached")
+def pull(source, name, fmt, force):
+    """Pull a model from a URL and compile it locally.
+
+    \b
+    Examples:
+        timber pull https://example.com/models/fraud-detector.json
+        timber pull https://example.com/models/fraud-detector.json --name fraud-v1
+    """
+    con = _con()
+    _rich_header(con, "Classical ML Inference Compiler")
+
+    try:
+        info = _run_load(source, name=name, fmt=fmt, force=force, con=con)
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo("\nModel loaded successfully:")
+    click.echo(f"  Name:      {info.name}")
+    click.echo(f"  Format:    {info.format}")
+    click.echo(f"  Run with:  timber serve {info.name}")
 
 
 @main.command(name="list")
 def list_models():
-    """List all loaded models.
+    """List all locally loaded models.
 
     \b
     Example:
         timber list
     """
+    from rich.table import Table
+
     from timber.store import ModelStore
 
+    con = _con()
     store = ModelStore()
     models = store.list_models()
 
@@ -552,14 +749,40 @@ def list_models():
         click.echo("No models loaded. Use 'timber load <model_file>' to load one.")
         return
 
-    click.echo(f"{'NAME':<25} {'FORMAT':<12} {'TREES':>6} {'FEATURES':>9} {'SIZE':>10} {'COMPILED':>9}")
-    click.echo("-" * 75)
+    table = Table(
+        show_header=True,
+        header_style="bold dim",
+        box=None,
+        padding=(0, 2),
+        show_edge=False,
+    )
+    table.add_column("NAME", style="bold cyan", no_wrap=True)
+    table.add_column("FRAMEWORK")
+    table.add_column("FORMAT", style="dim")
+    table.add_column("TREES", justify="right")
+    table.add_column("FEATURES", justify="right")
+    table.add_column("SIZE", justify="right", style="dim")
+    table.add_column("COMPILED", justify="center")
+
+    model_names = []
     for m in models:
-        compiled = "yes" if m.compiled else "no"
-        click.echo(
-            f"{m.name:<25} {m.format:<12} {m.n_trees:>6} {m.n_features:>9} "
-            f"{_fmt_bytes(m.size_bytes):>10} {compiled:>9}"
+        compiled = "[bold green]✓[/bold green]" if m.compiled else "[dim]no[/dim]"
+        table.add_row(
+            m.name,
+            m.framework or "—",
+            m.format,
+            str(m.n_trees),
+            str(m.n_features),
+            _fmt_bytes(m.size_bytes),
+            compiled,
         )
+        model_names.append(m.name)
+
+    con.print()
+    con.print(table)
+    con.print()
+    for _n in model_names:
+        click.echo(_n)  # for test capture — appears after table
 
 
 @main.command()
@@ -575,23 +798,39 @@ def remove(name):
 
     store = ModelStore()
     if store.remove_model(name):
-        click.echo(f"Removed model '{name}'")
+        click.echo(
+            click.style("  ✓ ", fg="green", bold=True)
+            + click.style(f"{'Removed':<24}", bold=True)
+            + click.style(f"model '{name}' deleted from local store", dim=True)
+        )
     else:
-        click.echo(f"Model '{name}' not found", err=True)
+        click.echo(
+            click.style("  ✗ ", fg="red", bold=True)
+            + click.style(f"Model {name!r} not found", bold=True)
+            + click.style("  —  run 'timber list' to see available models", dim=True),
+            err=True,
+        )
         sys.exit(1)
 
 
 @main.command()
-@click.argument("name")
-@click.option("--host", default="0.0.0.0", help="Bind host")
+@click.argument("source")
+@click.option("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
 @click.option("--port", default=11434, type=int, help="Bind port (default: 11434)")
-def serve(name, host, port):
-    """Serve a loaded model over HTTP for inference.
+@click.option("--name", default=None, help="Model name when source is a URL or file path")
+@click.option("--force", is_flag=True, default=False, help="Re-download even if URL is cached")
+def serve(source, host, port, name, force):
+    """Serve a model over HTTP. Accepts a model name, file path, or HTTPS URL.
+
+    When given a URL or file path, Timber will pull, compile, and serve
+    the model in a single step—showing every stage of processing.
 
     \b
     Examples:
-        timber serve my_model
+        timber serve fraud-detector
         timber serve fraud-detector --port 8080
+        timber serve ./model.json --name my-model
+        timber serve https://example.com/model.json
 
     \b
     API endpoints:
@@ -599,28 +838,65 @@ def serve(name, host, port):
         GET  /api/models   — list loaded models
         GET  /api/health   — health check
     """
-    from timber.store import ModelStore
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.text import Text as _Text
+
+    from timber.downloader import is_url
     from timber.runtime.predictor import TimberPredictor
     from timber.serve import serve as _serve
+    from timber.store import ModelStore
+
+    con = _con()
+    _rich_header(con, "Inference Server")
 
     store = ModelStore()
-    model_info = store.get_model(name)
+    model_info = None
+    model_name = source
 
-    if model_info is None:
-        # Try treating 'name' as a file path for convenience
-        path = Path(name)
-        if path.exists():
-            click.echo(f"Model '{name}' not loaded. Loading now...")
-            model_info = store.load_model(str(path))
-            name = model_info.name
-        else:
-            click.echo(f"Model '{name}' not found. Load it first with:", err=True)
-            click.echo(f"  timber load <model_file> --name {name}", err=True)
+    # ── Resolve source ────────────────────────────────────────────────────────
+    if is_url(source):
+        # Pull from URL, compile, register
+        try:
+            model_info = _run_load(source, name=name, fmt=None, force=force, con=con)
+            model_name = model_info.name
+        except Exception as exc:
+            con.print(f"\n  [bold red]✗ Failed:[/bold red] {exc}")
+            con.print("  [dim]Check the URL and try again.[/dim]")
             sys.exit(1)
 
-    # Load predictor from compiled artifacts
-    lib_path = store.get_lib_path(name)
-    artifact_dir = store.get_model_dir(name) / "compiled"
+    elif Path(source).exists():
+        # Local file — compile and register if not already loaded
+        existing = store.get_model(name or Path(source).stem)
+        if existing is None:
+            con.print(f"  [dim]Loading local file:[/dim] [cyan]{source}[/cyan]\n")
+            try:
+                model_info = _run_load(source, name=name, fmt=None, force=False, con=con)
+                model_name = model_info.name
+            except Exception as exc:
+                con.print(f"\n  [bold red]✗ Failed:[/bold red] {exc}")
+                sys.exit(1)
+        else:
+            model_info = existing
+            model_name = existing.name
+
+    else:
+        # Treat as a registered model name
+        model_info = store.get_model(source)
+        if model_info is None:
+            con.print(f"  [bold red]✗[/bold red] Model [bold]{source!r}[/bold] not found.")
+            con.print()
+            con.print("  [dim]Options:[/dim]")
+            con.print(f"    [cyan]timber load <model_file> --name {source}[/cyan]  [dim]load from a file[/dim]")
+            con.print(f"    [cyan]timber load <url> --name {source}[/cyan]         [dim]pull from a URL[/dim]")
+            con.print("    [cyan]timber list[/cyan]                                [dim]see all loaded models[/dim]")
+            sys.exit(1)
+        model_name = model_info.name
+
+    # ── Build predictor ───────────────────────────────────────────────────────
+    lib_path = store.get_lib_path(model_name)
+    _model_dir = store.get_model_dir(model_name)
+    artifact_dir = (_model_dir / "compiled") if _model_dir is not None else None
 
     if lib_path and lib_path.exists():
         predictor = TimberPredictor(
@@ -629,14 +905,50 @@ def serve(name, host, port):
             n_outputs=model_info.n_outputs,
             n_trees=model_info.n_trees,
         )
-    elif artifact_dir.exists():
+    elif artifact_dir is not None and artifact_dir.exists():
         predictor = TimberPredictor.from_artifact(str(artifact_dir), build=True)
     else:
-        click.echo(f"Error: compiled artifacts not found for '{name}'", err=True)
+        con.print(f"  [bold red]✗[/bold red] Compiled artifacts not found for [bold]{model_name!r}[/bold].")
+        con.print("  [dim]Try reloading:[/dim]")
+        con.print(f"    [cyan]timber load <source> --name {model_name}[/cyan]")
         sys.exit(1)
 
+    # ── Show serving panel ────────────────────────────────────────────────────
+    display_host = "localhost" if host in ("0.0.0.0", "") else host
+    endpoint = f"http://{display_host}:{port}"
+
+    t = Text()
+    t.append("  Serving    ", style="bold green")
+    t.append(f"{model_name}\n", style="bold white")
+    t.append("\n  Endpoint   ", style="dim")
+    t.append(endpoint, style="bold cyan underline")
+    t.append("\n  Framework  ", style="dim")
+    t.append(f"{model_info.framework or 'unknown'}", style="white")
+    t.append(f"  ·  {model_info.n_trees} trees  ·  {model_info.n_features} features", style="dim")
+    t.append("\n  Objective  ", style="dim")
+    t.append(model_info.objective or "unknown", style="white")
+    con.print(Panel(t, border_style="green", padding=(0, 1)))
+    con.print()
+    con.print("  [bold]API Endpoints[/bold]")
+    con.print(f"    [green]POST[/green]  [cyan]{endpoint}/api/predict[/cyan]      [dim]run inference[/dim]")
+    con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/models[/cyan]       [dim]list loaded models[/dim]")
+    con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/model/:name[/cyan]  [dim]model metadata[/dim]")
+    con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/health[/cyan]       [dim]health check[/dim]")
+    con.print()
+    con.print("  [bold]Example[/bold]")
+    con.print(_Text(f"    curl {endpoint}/api/predict \\", style="dim"))
+    con.print(_Text( "      -H 'Content-Type: application/json' \\", style="dim"))
+    con.print(_Text(f"      -d '{{\"model\": \"{model_name}\", \"inputs\": [[1.0, 2.0, ...]]}}'", style="dim"))
+    con.print()
+    _stop = _Text()
+    _stop.append("  Press ", style="dim")
+    _stop.append("Ctrl+C", style="bold dim")
+    _stop.append(" to stop", style="dim")
+    con.print(_stop)
+    con.print()
+
     info = {
-        "name": name,
+        "name": model_name,
         "n_features": model_info.n_features,
         "n_outputs": model_info.n_outputs,
         "n_trees": model_info.n_trees,
@@ -645,7 +957,7 @@ def serve(name, host, port):
         "format": model_info.format,
         "version": timber.__version__,
     }
-    _serve(predictor, host=host, port=port, model_name=name, model_info=info)
+    _serve(predictor, host=host, port=port, model_name=model_name, model_info=info)
 
 
 if __name__ == "__main__":

@@ -109,7 +109,7 @@ def _convert_sklearn(model: Any, artifact_hash: str = "") -> TimberIR:
 def _try_parse_scaler(step: Any, name: str) -> Optional[ScalerStage]:
     """Try to convert a sklearn scaler step into a ScalerStage."""
     try:
-        from sklearn.preprocessing import StandardScaler, MinMaxScaler
+        from sklearn.preprocessing import StandardScaler
     except ImportError:
         return None
 

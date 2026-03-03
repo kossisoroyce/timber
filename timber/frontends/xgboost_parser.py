@@ -20,7 +20,6 @@ from timber.ir.model import (
     TreeNode,
 )
 
-
 _OBJECTIVE_MAP: dict[str, Objective] = {
     "binary:logistic": Objective.BINARY_CLASSIFICATION,
     "binary:logitraw": Objective.BINARY_CLASSIFICATION,
