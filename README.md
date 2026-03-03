@@ -28,6 +28,66 @@ Timber takes a trained tree-based model — XGBoost, LightGBM, scikit-learn, Cat
 
 ---
 
+## See it in action
+
+**Pull a model from a URL and compile it in one command:**
+
+```console
+$ timber pull https://raw.githubusercontent.com/kossisoroyce/timber/main/examples/breast_cancer_model.json --name bc-demo
+
+╭─────────────────────────────────────────────────────────────────────────╮
+│  🌲 Timber v0.1.0  —  Classical ML Inference Compiler                   │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+  Pulling Model   ──────────────────────────────────────────────────────────
+
+  Source   https://raw.githubusercontent.com/.../breast_cancer_model.json
+
+  ✓ Downloaded              breast_cancer_model.json
+
+  Processing Model   ───────────────────────────────────────────────────────
+
+  ✓ Format detected         xgboost
+  ✓ Parsed model            50 trees · 30 features · binary:logistic
+  ✓ Optimized               3/5 passes applied
+  ✓ Generated C99           169 lines
+  ✓ Compiled binary         47.9 KB
+
+  ✓ Model ready  bc-demo
+
+Model loaded successfully:
+  Name:      bc-demo
+  Format:    xgboost
+  Run with:  timber serve bc-demo
+```
+
+**Serve it:**
+
+```console
+$ timber serve bc-demo
+
+  Serving    bc-demo
+  Endpoint   http://localhost:11434
+  Framework  xgboost  ·  50 trees  ·  30 features
+  Objective  binary:logistic
+
+  POST  http://localhost:11434/api/predict
+  GET   http://localhost:11434/api/models
+  GET   http://localhost:11434/api/health
+```
+
+**Predict:**
+
+```console
+$ curl -s http://localhost:11434/api/predict \
+    -H 'Content-Type: application/json' \
+    -d '{"model": "bc-demo", "inputs": [[1.799e+01, 1.038e+01, 1.228e+02, 1.001e+03, 0.1184, 0.2776, 0.3001, 0.1471, 0.2419, 0.07871, 1.095, 0.9053, 8.589, 153.4, 0.006399, 0.04904, 0.05373, 0.01587, 0.03003, 0.006193, 2.538e+01, 1.733e+01, 1.846e+02, 2.019e+03, 0.1622, 0.6656, 0.7119, 0.2654, 0.4601, 0.1189]]}'
+
+{"model": "bc-demo", "outputs": [[0.9971]], "n_samples": 1}
+```
+
+---
+
 ## Table of Contents
 
 - [Who is this for?](#who-is-this-for)
