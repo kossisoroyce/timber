@@ -1,0 +1,12 @@
+services:
+  timber:
+    build: .
+    ports:
+      - "11434:11434"
+    environment:
+      - MODEL_URL=https://raw.githubusercontent.com/kossisoroyce/timber/main/examples/breast_cancer_model.json
+    volumes:
+      - timber_data:/data/timber
+
+volumes:
+  timber_data:
