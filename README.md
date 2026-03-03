@@ -17,7 +17,8 @@
   <a href="https://kossisoroyce.github.io/timber/">Documentation</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="https://pypi.org/project/timber-compiler/">PyPI</a> ·
-  <a href="paper/timber_paper.pdf">Technical Paper</a>
+  <a href="paper/timber_paper.pdf">Technical Paper</a> ·
+  <a href="skill.md">Agent Skill</a>
 </p>
 
 ---
@@ -33,6 +34,7 @@ Timber takes a trained tree-based model — XGBoost, LightGBM, scikit-learn, Cat
 > **Point Timber at any URL and it downloads, compiles, and serves in one command — no setup required.**
 
 ```console
+$ pip install timber-compiler
 $ timber serve https://raw.githubusercontent.com/kossisoroyce/timber/main/examples/breast_cancer_model.json
 
   ✓ Downloaded              breast_cancer_model.json
