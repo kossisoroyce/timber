@@ -10,6 +10,21 @@ pip install timber-compiler
 
 **Requirements:** Python 3.10+ and a C compiler (`gcc` or `clang`) for compiling shared libraries.
 
+## The Fastest Path: Serve Any URL Directly
+
+You don't need to download anything first. Point `timber serve` at any HTTPS URL
+and it downloads, compiles, and starts serving immediately:
+
+```bash
+timber serve https://raw.githubusercontent.com/kossisoroyce/timber/main/examples/breast_cancer_model.json
+```
+
+That's it. Timber handles the entire pipeline — download → parse → optimize → compile → serve — in one command. The model is cached locally so subsequent `timber serve <name>` calls start instantly.
+
+> **This works for any publicly accessible model file.** Host your model on S3, GitHub, or any HTTPS endpoint and share a single `timber serve <url>` command with your team.
+
+---
+
 ## Your First Model in 60 Seconds
 
 ### 1. Train a model (or use an existing one)
@@ -37,28 +52,16 @@ print(f"Saved model with {model.n_estimators} trees, {X_train.shape[1]} features
 timber load my_model.json --name breast-cancer
 ```
 
-Output:
-```
-Timber v0.1.0 — loading model...
-
-Model loaded successfully:
-  Name:      breast-cancer
-  Format:    xgboost
-  Framework: xgboost
-  Trees:     50
-  Features:  30
-  Objective: binary:logistic
-  Compiled:  yes
-  Size:      58.0 KB
-
-Run inference with:
-  timber serve breast-cancer
-```
-
 ### 3. Serve it
 
 ```bash
 timber serve breast-cancer
+```
+
+**Or skip the load step entirely and serve from a URL:**
+
+```bash
+timber serve https://yourhost.com/my_model.json --name breast-cancer
 ```
 
 ### 4. Query it
