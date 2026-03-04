@@ -56,7 +56,7 @@ def _to_onnx_linear_classifier(n_features: int = 10, n_classes: int = 2,
     if multiclass:
         X, y = load_iris(return_X_y=True)
         X = X.astype(np.float32)
-        clf = LogisticRegression(max_iter=200, solver="lbfgs", multi_class="multinomial")
+        clf = LogisticRegression(max_iter=200, solver="lbfgs")
     else:
         X, y = load_breast_cancer(return_X_y=True)
         X = X[:, :n_features].astype(np.float32)
@@ -644,9 +644,12 @@ class TestC99EmitterLive:
                 undefined = result.stdout.strip()
                 # Only allowed: exp, expf from libm, and __stack_chk (security)
                 bad = [l for l in undefined.splitlines()
-                       if l.strip() and not any(ok in l for ok in
+                       if l.strip()
+                       and not l.lstrip().startswith("w ")  # weak symbols are fine
+                       and not any(ok in l for ok in
                           ("exp", "log", "sqrt", "fabs", "tanh",
-                           "__stack_chk", "dyld", "_DYNAMIC"))]
+                           "__stack_chk", "dyld", "_DYNAMIC",
+                           "_ITM_", "__cxa_", "__gmon_"))]
                 assert not bad, f"Unexpected undefined symbols: {bad}"
         finally:
             os.unlink(path)
