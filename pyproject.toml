@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "timber-compiler"
-version = "0.2.0"
+version = "0.3.0"
 description = "Classical ML Inference Compiler — compiles trained ML models into optimized native inference binaries"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,8 +46,9 @@ Changelog = "https://github.com/kossisoroyce/timber/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 serve = [
-    "rich>=13.0",
-    "requests>=2.28",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "anyio>=4.0",
 ]
 full = [
     "rich>=13.0",
