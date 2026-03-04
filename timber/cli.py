@@ -819,10 +819,7 @@ def remove(name):
 @click.option("--port", default=11434, type=int, help="Bind port (default: 11434)")
 @click.option("--name", default=None, help="Model name when source is a URL or file path")
 @click.option("--force", is_flag=True, default=False, help="Re-download even if URL is cached")
-@click.option("--workers", default=1, type=int, help="Uvicorn worker processes (default: 1). Set to cpu_count for production.")
-@click.option("--threads", default=0, type=int, help="Inference threads per worker (default: auto = min(32, cpu+4))")
-@click.option("--backlog", default=2048, type=int, help="TCP connection backlog (default: 2048)")
-def serve(source, host, port, name, force, workers, threads, backlog):
+def serve(source, host, port, name, force):
     """Serve a model over HTTP. Accepts a model name, file path, or HTTPS URL.
 
     When given a URL or file path, Timber will pull, compile, and serve
@@ -831,17 +828,15 @@ def serve(source, host, port, name, force, workers, threads, backlog):
     \b
     Examples:
         timber serve fraud-detector
-        timber serve fraud-detector --port 8080 --workers 4
+        timber serve fraud-detector --port 8080
         timber serve ./model.json --name my-model
-        timber serve https://example.com/model.json --workers 4 --threads 8
+        timber serve https://example.com/model.json
 
     \b
     API endpoints:
         POST /api/predict  — {"model": "name", "inputs": [[...]]}
         GET  /api/models   — list loaded models
-        GET  /api/metrics  — latency p50/p95/p99, req/s, uptime
         GET  /api/health   — health check
-        GET  /docs         — interactive OpenAPI UI
     """
     from rich.panel import Panel
     from rich.text import Text
@@ -918,11 +913,6 @@ def serve(source, host, port, name, force, workers, threads, backlog):
         con.print(f"    [cyan]timber load <source> --name {model_name}[/cyan]")
         sys.exit(1)
 
-    # ── Compute concurrency config for display ────────────────────────────────
-    import os as _os
-    _threads_display = threads or min(32, (_os.cpu_count() or 1) + 4)
-    _concurrency = workers * _threads_display
-
     # ── Show serving panel ────────────────────────────────────────────────────
     display_host = "localhost" if host in ("0.0.0.0", "") else host
     endpoint = f"http://{display_host}:{port}"
@@ -937,23 +927,18 @@ def serve(source, host, port, name, force, workers, threads, backlog):
     t.append(f"  ·  {model_info.n_trees} trees  ·  {model_info.n_features} features", style="dim")
     t.append("\n  Objective  ", style="dim")
     t.append(model_info.objective or "unknown", style="white")
-    t.append("\n  Workers    ", style="dim")
-    t.append(f"{workers}", style="white")
-    t.append(f"  ·  Threads/worker  {_threads_display}  ·  Concurrency  {_concurrency}", style="dim")
     con.print(Panel(t, border_style="green", padding=(0, 1)))
     con.print()
     con.print("  [bold]API Endpoints[/bold]")
     con.print(f"    [green]POST[/green]  [cyan]{endpoint}/api/predict[/cyan]      [dim]run inference[/dim]")
     con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/models[/cyan]       [dim]list loaded models[/dim]")
     con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/model/:name[/cyan]  [dim]model metadata[/dim]")
-    con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/metrics[/cyan]      [dim]latency p50/p95/p99 · req/s · uptime[/dim]")
     con.print(f"    [green]GET[/green]   [cyan]{endpoint}/api/health[/cyan]       [dim]health check[/dim]")
-    con.print(f"    [green]GET[/green]   [cyan]{endpoint}/docs[/cyan]             [dim]interactive OpenAPI UI[/dim]")
     con.print()
     con.print("  [bold]Example[/bold]")
     con.print(_Text(f"    curl {endpoint}/api/predict \\", style="dim"))
     con.print(_Text( "      -H 'Content-Type: application/json' \\", style="dim"))
-    con.print(_Text(f"      -d '{{\"model\": \"{model_name}\", \"inputs\": [[1.0, 2.0, ...]]}}'" , style="dim"))
+    con.print(_Text(f"      -d '{{\"model\": \"{model_name}\", \"inputs\": [[1.0, 2.0, ...]]}}'", style="dim"))
     con.print()
     _stop = _Text()
     _stop.append("  Press ", style="dim")
@@ -972,16 +957,7 @@ def serve(source, host, port, name, force, workers, threads, backlog):
         "format": model_info.format,
         "version": timber.__version__,
     }
-    _serve(
-        predictor,
-        host=host,
-        port=port,
-        model_name=model_name,
-        model_info=info,
-        workers=workers,
-        threads=threads,
-        backlog=backlog,
-    )
+    _serve(predictor, host=host, port=port, model_name=model_name, model_info=info)
 
 
 if __name__ == "__main__":
