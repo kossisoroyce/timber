@@ -19,16 +19,19 @@ timber load pipeline.pkl --format sklearn
 
 ### `timber serve <name>`
 
-Serve a loaded model over HTTP.
+Serve a loaded model over HTTP (multi-worker FastAPI + uvicorn).
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--host HOST` | `0.0.0.0` | Bind host |
 | `--port PORT` | `11434` | Bind port |
+| `--workers N` | `1` | OS-level worker processes |
+| `--threads M` | `cpu_count + 4` | `ThreadPoolExecutor` size per worker |
+| `--backlog N` | `2048` | TCP listen backlog |
 
 ```bash
 timber serve my-model
-timber serve my-model --port 8080
+timber serve my-model --port 8080 --workers 4
 ```
 
 ### `timber list`
@@ -80,13 +83,23 @@ Validate compiled output against reference predictions.
 
 ### `timber bench`
 
-Benchmark inference performance.
+Benchmark inference performance with rich latency reporting.
 
-| Option | Description |
-|--------|-------------|
-| `--artifact DIR` | Compiled artifact directory |
-| `--data PATH` | Input data CSV |
-| `--batch-sizes LIST` | Comma-separated batch sizes |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--artifact DIR` | required | Compiled artifact directory or model file |
+| `--data PATH` | required | Input data CSV |
+| `--batch-sizes LIST` | `1,16,64,256` | Comma-separated batch sizes |
+| `--warmup-iters N` | `1000` | Warmup iterations before timing |
+| `--iters N` | `1000` | Timed iterations per batch size |
+| `--report PATH` | none | Write JSON + HTML report to `PATH.json` / `PATH.html` |
+
+Output columns: **P50 / P95 / P99 / P999** latency (µs), throughput (samples/s), CV% (stability).
+
+```bash
+timber bench --artifact ./dist/ --data test.csv --iters 5000 --report results
+# Writes results.json and results.html
+```
 
 ---
 
@@ -162,8 +175,30 @@ Health check.
 
 **Response:**
 ```json
-{"status": "ok", "version": "0.1.0"}
+{"status": "ok", "version": "0.4.0", "models_loaded": 2, "uptime_seconds": 142.3}
 ```
+
+### GET `/api/metrics`
+
+Rolling inference latency metrics (10,000-sample window).
+
+**Response:**
+```json
+{
+  "p50_us": 1.9,
+  "p95_us": 2.4,
+  "p99_us": 3.1,
+  "p999_us": 7.8,
+  "total_requests": 58291,
+  "total_samples": 58291,
+  "requests_per_sec": 4820.1,
+  "uptime_seconds": 12.1
+}
+```
+
+### GET `/docs`
+
+Interactive OpenAPI (Swagger) UI — available when `fastapi` is installed.
 
 ---
 
@@ -216,6 +251,78 @@ store.remove_model("my-model")
 model_dir = store.get_model_dir("my-model")
 lib_path = store.get_lib_path("my-model")
 ```
+
+---
+
+## Python API — Privacy
+
+### `DPConfig`
+
+Configuration for differential privacy noise injection.
+
+```python
+from timber.privacy.dp import DPConfig
+
+cfg = DPConfig(
+    mechanism="laplace",   # "laplace" or "gaussian"
+    epsilon=1.0,           # privacy budget (> 0)
+    sensitivity=1.0,       # L1/L2 sensitivity (> 0)
+    delta=1e-5,            # only required for "gaussian"
+    clip_outputs=False,    # clip noisy outputs to [output_min, output_max]
+    output_min=0.0,
+    output_max=1.0,
+    seed=None,             # set for reproducibility
+)
+```
+
+### `apply_dp_noise(outputs, cfg) → (noisy_outputs, DPReport)`
+
+```python
+from timber.privacy.dp import apply_dp_noise
+import numpy as np
+
+outputs = np.array([[0.8, 0.2]], dtype=np.float32)
+noisy, report = apply_dp_noise(outputs, cfg)
+# report.noise_scale, .mechanism, .n_outputs_noised, .epsilon, .delta, .summary()
+```
+
+- Input array dtype is preserved exactly.
+- Works on any shape: `(n_samples, n_outputs)` or `(n_outputs,)`.
+
+### `calibrate_epsilon(noise_level, sensitivity, mechanism) → float`
+
+Invert the mechanism formula to find the `epsilon` that produces a given noise scale.
+
+```python
+from timber.privacy.dp import calibrate_epsilon
+eps = calibrate_epsilon(noise_level=0.05, sensitivity=1.0, mechanism="laplace")
+# returns sensitivity / noise_level = 20.0
+```
+
+---
+
+## Python API — LLVM IR
+
+### `LLVMIREmitter`
+
+```python
+from timber.codegen.llvm_ir import LLVMIREmitter
+from timber.frontends.auto_detect import parse_model
+
+ir = parse_model("model.json")
+emitter = LLVMIREmitter(target="x86_64")  # or "aarch64", "cortex-m4", "rv32imf", …
+out = emitter.emit(ir)
+
+print(out.model_ll)         # LLVM IR text
+files = out.save("./dist/") # writes model.ll
+```
+
+**`LLVMIREmitter(target, float_type)`**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `target` | `"x86_64"` | Target alias or full LLVM triple |
+| `float_type` | `"float"` | `"float"` (32-bit) or `"double"` (64-bit) |
 
 ---
 

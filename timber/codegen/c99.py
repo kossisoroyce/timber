@@ -15,11 +15,52 @@ from pathlib import Path
 from typing import Optional
 
 from timber.ir.model import (
+    LinearStage,
     Objective,
     PrecisionMode,
+    SVMStage,
     TimberIR,
     TreeEnsembleStage,
 )
+
+
+# ---------------------------------------------------------------------------
+# Predefined embedded target profiles
+# ---------------------------------------------------------------------------
+EMBEDDED_PROFILES: dict[str, dict] = {
+    "cortex-m4": {
+        "arch": "cortex-m4",
+        "os": "baremetal",
+        "abi": "eabi",
+        "cross_prefix": "arm-none-eabi-",
+        "cpu_flags": "-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb",
+        "extra_flags": "--specs=nosys.specs",
+    },
+    "cortex-m33": {
+        "arch": "cortex-m33",
+        "os": "baremetal",
+        "abi": "eabi",
+        "cross_prefix": "arm-none-eabi-",
+        "cpu_flags": "-mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb",
+        "extra_flags": "--specs=nosys.specs",
+    },
+    "rv32imf": {
+        "arch": "rv32imf",
+        "os": "baremetal",
+        "abi": "ilp32f",
+        "cross_prefix": "riscv32-unknown-elf-",
+        "cpu_flags": "-march=rv32imf -mabi=ilp32f",
+        "extra_flags": "",
+    },
+    "rv64gc": {
+        "arch": "rv64gc",
+        "os": "linux",
+        "abi": "lp64d",
+        "cross_prefix": "riscv64-unknown-linux-gnu-",
+        "cpu_flags": "-march=rv64gc -mabi=lp64d",
+        "extra_flags": "",
+    },
+}
 
 
 @dataclass
@@ -32,6 +73,31 @@ class TargetSpec:
     precision: PrecisionMode = PrecisionMode.FLOAT32
     output_format: str = "c_source"
     strip_symbols: bool = False
+    # Embedded cross-compilation fields
+    cross_prefix: str = ""      # e.g. "arm-none-eabi-"
+    cpu_flags: str = ""         # e.g. "-mcpu=cortex-m4 -mfpu=fpv4-sp-d16 ..."
+    extra_flags: str = ""       # e.g. "--specs=nosys.specs"
+    embedded: bool = False      # True disables shared-lib targets
+
+    @classmethod
+    def for_embedded(cls, profile: str, **kwargs) -> "TargetSpec":
+        """Create a TargetSpec for a named embedded profile."""
+        if profile not in EMBEDDED_PROFILES:
+            raise ValueError(
+                f"Unknown embedded profile '{profile}'. "
+                f"Available: {', '.join(EMBEDDED_PROFILES)}"
+            )
+        p = EMBEDDED_PROFILES[profile]
+        return cls(
+            arch=p["arch"],
+            os=p["os"],
+            abi=p["abi"],
+            cross_prefix=p["cross_prefix"],
+            cpu_flags=p["cpu_flags"],
+            extra_flags=p["extra_flags"],
+            embedded=True,
+            **kwargs,
+        )
 
 
 @dataclass
@@ -72,14 +138,39 @@ class C99Emitter:
         self.target = target or TargetSpec()
 
     def emit(self, ir: TimberIR) -> C99Output:
-        """Generate the full C99 source package from the IR."""
-        ensemble = ir.get_tree_ensemble()
-        if ensemble is None:
-            raise ValueError("No tree ensemble found in IR pipeline")
+        """Generate the full C99 source package from the IR.
 
-        model_h = self._emit_header(ir, ensemble)
-        model_data_c = self._emit_data(ir, ensemble)
-        model_c = self._emit_inference(ir, ensemble)
+        Dispatches to the appropriate emitter based on the primary stage type:
+          - TreeEnsembleStage  → tree traversal inference
+          - LinearStage        → dot-product + activation inference
+          - SVMStage           → kernel machine inference
+        """
+        # Find primary stage (skip preprocessing stages)
+        primary = None
+        for stage in ir.pipeline:
+            if isinstance(stage, (TreeEnsembleStage, LinearStage, SVMStage)):
+                primary = stage
+                break
+
+        if primary is None:
+            raise ValueError(
+                "No supported primary stage found in IR pipeline. "
+                "Expected TreeEnsembleStage, LinearStage, or SVMStage."
+            )
+
+        if isinstance(primary, LinearStage):
+            model_h = self._emit_header_linear(ir, primary)
+            model_data_c = self._emit_data_linear(ir, primary)
+            model_c = self._emit_inference_linear(ir, primary)
+        elif isinstance(primary, SVMStage):
+            model_h = self._emit_header_svm(ir, primary)
+            model_data_c = self._emit_data_svm(ir, primary)
+            model_c = self._emit_inference_svm(ir, primary)
+        else:
+            model_h = self._emit_header(ir, primary)
+            model_data_c = self._emit_data(ir, primary)
+            model_c = self._emit_inference(ir, primary)
+
         cmakelists = self._emit_cmake(ir)
         makefile = self._emit_makefile(ir)
 
@@ -454,6 +545,370 @@ class C99Emitter:
 
         return "\n".join(lines) + "\n"
 
+    # ------------------------------------------------------------------
+    # Linear model emission
+    # ------------------------------------------------------------------
+
+    def _emit_header_linear(self, ir: TimberIR, stage: "LinearStage") -> str:
+        """Generate model.h for a linear model."""
+        n_features = len(stage.weights) // max(stage.n_classes, 1) if stage.multi_weights else len(stage.weights)
+        n_outputs = 1 if stage.n_classes <= 2 else stage.n_classes
+        float_type = self._float_type()
+        lines = self._common_header_prefix(n_features, n_outputs, extra_defines={
+            "TIMBER_N_CLASSES": str(max(stage.n_classes, 1)),
+        })
+        return "\n".join(lines) + "\n"
+
+    def _emit_data_linear(self, ir: TimberIR, stage: "LinearStage") -> str:
+        """Generate model_data.c for a linear model."""
+        float_type = self._float_type()
+        lines = [
+            "/* model_data.c — Timber linear model data */",
+            "/* Generated by Timber — DO NOT EDIT */",
+            "",
+            '#include "model.h"',
+            "",
+        ]
+        n_features = len(stage.weights) // max(stage.n_classes, 1) if stage.multi_weights else len(stage.weights)
+
+        if stage.multi_weights:
+            n_cls = stage.n_classes
+            n_w = len(stage.weights)
+            w_str = ", ".join(self._format_float(w) for w in stage.weights)
+            lines.append(f"static const {float_type} TIMBER_WEIGHTS[{n_w}] = {{{w_str}}};")
+            if stage.biases:
+                b_str = ", ".join(self._format_float(b) for b in stage.biases)
+                lines.append(f"static const {float_type} TIMBER_BIASES[{n_cls}] = {{{b_str}}};")
+            else:
+                lines.append(f"static const {float_type} TIMBER_BIASES[{n_cls}] = {{{', '.join(['0.0f']*n_cls)}}};")
+        else:
+            n_w = len(stage.weights)
+            w_str = ", ".join(self._format_float(w) for w in stage.weights)
+            lines.append(f"static const {float_type} TIMBER_WEIGHTS[{n_w}] = {{{w_str}}};")
+            lines.append(f"static const {float_type} TIMBER_BIAS = {self._format_float(stage.bias)};")
+        lines.append("")
+        return "\n".join(lines) + "\n"
+
+    def _emit_inference_linear(self, ir: TimberIR, stage: "LinearStage") -> str:
+        """Generate model.c for a linear model."""
+        float_type = self._float_type()
+        n_features = len(stage.weights) // max(stage.n_classes, 1) if stage.multi_weights else len(stage.weights)
+        n_outputs = 1 if stage.n_classes <= 2 else stage.n_classes
+
+        lines = [
+            "/* model.c — Timber linear model inference */",
+            "/* Generated by Timber — DO NOT EDIT */",
+            "",
+            '#include "model.h"',
+            "#include <stdint.h>",
+            "#include <stddef.h>",
+            "#include <math.h>",
+            "",
+            '#include "model_data.c"',
+            "",
+            "struct TimberCtx { int initialized; };",
+            "static struct TimberCtx _default_ctx = {1};",
+            "",
+        ]
+        lines += self._common_runtime_fns()
+        lines += [
+            "int timber_infer_single(",
+            f"    const {float_type}  inputs[TIMBER_N_FEATURES],",
+            f"    {float_type}        outputs[TIMBER_N_OUTPUTS],",
+            "    const TimberCtx*    ctx",
+            ") {",
+            "    (void)ctx;",
+            "    int i;",
+        ]
+
+        if stage.multi_weights:
+            n_cls = stage.n_classes
+            # n_outputs caps writes to the declared output buffer size
+            lines.append(f"    double scores[{n_cls}];")
+            lines.append(f"    for (i = 0; i < {n_cls}; i++) {{")
+            lines.append("        int j;")
+            lines.append("        scores[i] = (double)TIMBER_BIASES[i];")
+            lines.append(f"        for (j = 0; j < {n_features}; j++)")
+            lines.append(f"            scores[i] += (double)TIMBER_WEIGHTS[i * {n_features} + j] * (double)inputs[j];")
+            lines.append("    }")
+            if stage.activation == "softmax":
+                lines += [
+                    "    { /* softmax */",
+                    "        double max_v = scores[0]; int c;",
+                    f"        for (c = 1; c < {n_cls}; c++) if (scores[c] > max_v) max_v = scores[c];",
+                    "        double denom = 0.0;",
+                    f"        for (c = 0; c < {n_cls}; c++) {{ scores[c] = exp(scores[c] - max_v); denom += scores[c]; }}",
+                    f"        for (c = 0; c < {n_outputs}; c++) outputs[c] = ({float_type})(scores[c] / denom);",
+                    "    }",
+                ]
+            else:
+                lines.append(f"    for (i = 0; i < {n_outputs}; i++) outputs[i] = ({float_type})scores[i];")
+        else:
+            lines.append("    double sum = (double)TIMBER_BIAS;")
+            lines.append(f"    for (i = 0; i < {n_features}; i++)")
+            lines.append("        sum += (double)TIMBER_WEIGHTS[i] * (double)inputs[i];")
+            if stage.activation in ("sigmoid", "logistic"):
+                lines.append(f"    outputs[0] = ({float_type})(1.0 / (1.0 + exp(-sum)));")
+            else:
+                lines.append(f"    outputs[0] = ({float_type})sum;")
+
+        lines += ["    return 0;", "}", ""]
+        lines += self._batched_infer_fn(float_type)
+        return "\n".join(lines) + "\n"
+
+    # ------------------------------------------------------------------
+    # SVM emission
+    # ------------------------------------------------------------------
+
+    def _emit_header_svm(self, ir: TimberIR, stage: "SVMStage") -> str:
+        """Generate model.h for an SVM model."""
+        n_outputs = 1 if stage.n_classes <= 2 else stage.n_classes
+        lines = self._common_header_prefix(stage.n_features, n_outputs, extra_defines={
+            "TIMBER_N_SV": str(stage.n_sv),
+            "TIMBER_N_CLASSES": str(stage.n_classes),
+        })
+        return "\n".join(lines) + "\n"
+
+    def _emit_data_svm(self, ir: TimberIR, stage: "SVMStage") -> str:
+        """Generate model_data.c for an SVM model."""
+        float_type = self._float_type()
+        n_sv = stage.n_sv
+        n_features = stage.n_features
+
+        lines = [
+            "/* model_data.c — Timber SVM model data */",
+            "/* Generated by Timber — DO NOT EDIT */",
+            "",
+            '#include "model.h"',
+            "",
+        ]
+
+        # Support vectors — row-major [n_sv x n_features]
+        sv_flat = [v for sv in stage.support_vectors for v in sv]
+        sv_str = ", ".join(self._format_float(v) for v in sv_flat)
+        lines.append(f"static const {float_type} TIMBER_SV[{n_sv * n_features}] = {{{sv_str}}};")
+
+        # Dual coefficients
+        dc_str = ", ".join(self._format_float(v) for v in stage.dual_coef)
+        lines.append(f"static const {float_type} TIMBER_DUAL_COEF[{len(stage.dual_coef)}] = {{{dc_str}}};")
+
+        # Rho (bias)
+        rho_str = ", ".join(self._format_float(v) for v in stage.rho)
+        n_rho = max(len(stage.rho), 1)
+        lines.append(f"static const {float_type} TIMBER_RHO[{n_rho}] = {{{rho_str or '0.0f'}}};")
+
+        # Kernel parameters
+        lines.append(f"static const {float_type} TIMBER_GAMMA = {self._format_float(stage.gamma)};")
+        lines.append(f"static const {float_type} TIMBER_COEF0 = {self._format_float(stage.coef0)};")
+        lines.append(f"static const int32_t TIMBER_DEGREE = {stage.degree};")
+        lines.append("")
+        return "\n".join(lines) + "\n"
+
+    def _emit_inference_svm(self, ir: TimberIR, stage: "SVMStage") -> str:
+        """Generate model.c for an SVM model."""
+        float_type = self._float_type()
+        n_sv = stage.n_sv
+        n_features = stage.n_features
+        n_outputs = 1 if stage.n_classes <= 2 else stage.n_classes
+        kernel = stage.kernel_type.lower()
+
+        lines = [
+            "/* model.c — Timber SVM inference */",
+            "/* Generated by Timber — DO NOT EDIT */",
+            "",
+            '#include "model.h"',
+            "#include <stdint.h>",
+            "#include <stddef.h>",
+            "#include <math.h>",
+            "",
+            '#include "model_data.c"',
+            "",
+            "struct TimberCtx { int initialized; };",
+            "static struct TimberCtx _default_ctx = {1};",
+            "",
+        ]
+        lines += self._common_runtime_fns()
+
+        # Kernel function
+        lines += [
+            f"static double timber_kernel(const {float_type}* x, const {float_type}* sv, int n) {{",
+            "    int i;",
+        ]
+        if kernel == "rbf":
+            lines += [
+                "    double dist = 0.0;",
+                "    for (i = 0; i < n; i++) {",
+                "        double d = (double)x[i] - (double)sv[i];",
+                "        dist += d * d;",
+                "    }",
+                "    return exp(-(double)TIMBER_GAMMA * dist);",
+            ]
+        elif kernel == "linear":
+            lines += [
+                "    double dot = 0.0;",
+                "    for (i = 0; i < n; i++) dot += (double)x[i] * (double)sv[i];",
+                "    return dot;",
+            ]
+        elif kernel == "poly":
+            lines += [
+                "    double dot = 0.0;",
+                "    for (i = 0; i < n; i++) dot += (double)x[i] * (double)sv[i];",
+                "    double base = (double)TIMBER_GAMMA * dot + (double)TIMBER_COEF0;",
+                "    double result = 1.0; int d;",
+                "    for (d = 0; d < TIMBER_DEGREE; d++) result *= base;",
+                "    return result;",
+            ]
+        else:  # sigmoid
+            lines += [
+                "    double dot = 0.0;",
+                "    for (i = 0; i < n; i++) dot += (double)x[i] * (double)sv[i];",
+                "    return tanh((double)TIMBER_GAMMA * dot + (double)TIMBER_COEF0);",
+            ]
+        lines += ["}", ""]
+
+        # Inference function
+        lines += [
+            "int timber_infer_single(",
+            f"    const {float_type}  inputs[TIMBER_N_FEATURES],",
+            f"    {float_type}        outputs[TIMBER_N_OUTPUTS],",
+            "    const TimberCtx*    ctx",
+            ") {",
+            "    (void)ctx;",
+            "    int sv;",
+            "    double decision = (double)TIMBER_RHO[0];",
+            f"    for (sv = 0; sv < {n_sv}; sv++) {{",
+            f"        decision += (double)TIMBER_DUAL_COEF[sv] * timber_kernel(inputs, TIMBER_SV + sv * {n_features}, {n_features});",
+            "    }",
+        ]
+        if stage.post_transform == "logistic":
+            lines.append(f"    outputs[0] = ({float_type})(1.0 / (1.0 + exp(-decision)));")
+        else:
+            lines.append(f"    outputs[0] = ({float_type})decision;")
+        lines += ["    return 0;", "}", ""]
+        lines += self._batched_infer_fn(float_type)
+        return "\n".join(lines) + "\n"
+
+    # ------------------------------------------------------------------
+    # Shared helpers for header / runtime
+    # ------------------------------------------------------------------
+
+    def _common_header_prefix(
+        self, n_features: int, n_outputs: int, extra_defines: dict | None = None
+    ) -> list:
+        """Return common header lines shared by tree/linear/SVM headers."""
+        float_type = self._float_type()
+        lines = [
+            "/* model.h — Timber compiled model inference header */",
+            "/* Generated by Timber — DO NOT EDIT */",
+            "",
+            "#ifndef TIMBER_MODEL_H",
+            "#define TIMBER_MODEL_H",
+            "",
+            "#include <stdint.h>",
+            "#include <stddef.h>",
+            "",
+            "#ifdef __cplusplus",
+            'extern "C" {',
+            "#endif",
+            "",
+            "#define TIMBER_ABI_VERSION  1",
+            '#define TIMBER_VERSION     "0.1.0"',
+            "",
+            f"#define TIMBER_N_FEATURES {n_features}",
+            f"#define TIMBER_N_OUTPUTS  {n_outputs}",
+        ]
+        if extra_defines:
+            for k, v in extra_defines.items():
+                lines.append(f"#define {k} {v}")
+        lines += [
+            "",
+            "typedef struct TimberCtx TimberCtx;",
+            "",
+            "#define TIMBER_OK          0",
+            "#define TIMBER_ERR_NULL   -1",
+            "#define TIMBER_ERR_INIT   -2",
+            "#define TIMBER_ERR_BOUNDS -3",
+            "",
+            "int timber_init(TimberCtx** ctx);",
+            "int timber_abi_version(void);",
+            "typedef void (*timber_log_fn)(int level, const char* msg);",
+            "void timber_set_log_callback(timber_log_fn fn);",
+            "const char* timber_strerror(int code);",
+            "void timber_free(TimberCtx* ctx);",
+            "",
+            "int timber_infer(",
+            f"    const {float_type}*  inputs,",
+            "    int                  n_samples,",
+            f"    {float_type}*        outputs,",
+            "    const TimberCtx*     ctx",
+            ");",
+            "",
+            "int timber_infer_single(",
+            f"    const {float_type}  inputs[TIMBER_N_FEATURES],",
+            f"    {float_type}        outputs[TIMBER_N_OUTPUTS],",
+            "    const TimberCtx*    ctx",
+            ");",
+            "",
+            "#ifdef __cplusplus",
+            "}",
+            "#endif",
+            "",
+            "#endif /* TIMBER_MODEL_H */",
+        ]
+        return lines
+
+    def _common_runtime_fns(self) -> list:
+        """Return shared runtime (logging, init, free, strerror) lines."""
+        return [
+            "static timber_log_fn _timber_log_cb = NULL;",
+            "void timber_set_log_callback(timber_log_fn fn) { _timber_log_cb = fn; }",
+            "static void timber_log(int level, const char* msg) {",
+            "    if (_timber_log_cb) _timber_log_cb(level, msg);",
+            "}",
+            "const char* timber_strerror(int code) {",
+            "    switch (code) {",
+            '        case  0: return "TIMBER_OK";',
+            '        case -1: return "TIMBER_ERR_NULL: null pointer argument";',
+            '        case -2: return "TIMBER_ERR_INIT: context not initialized";',
+            '        case -3: return "TIMBER_ERR_BOUNDS: argument out of bounds";',
+            '        default: return "TIMBER_ERR_UNKNOWN";',
+            "    }",
+            "}",
+            "int timber_abi_version(void) { return TIMBER_ABI_VERSION; }",
+            "int timber_init(TimberCtx** ctx) {",
+            "    if (ctx == NULL) return TIMBER_ERR_NULL;",
+            "    *ctx = &_default_ctx;",
+            "    timber_log(2, \"timber_init: OK\");",
+            "    return TIMBER_OK;",
+            "}",
+            "void timber_free(TimberCtx* ctx) { (void)ctx; }",
+            "",
+        ]
+
+    def _batched_infer_fn(self, float_type: str) -> list:
+        """Return the batched timber_infer function lines."""
+        return [
+            "int timber_infer(",
+            f"    const {float_type}*  inputs,",
+            "    int                  n_samples,",
+            f"    {float_type}*        outputs,",
+            "    const TimberCtx*     ctx",
+            ") {",
+            "    int i;",
+            "    if (inputs == NULL || outputs == NULL) return TIMBER_ERR_NULL;",
+            "    if (n_samples <= 0) return TIMBER_ERR_BOUNDS;",
+            "    for (i = 0; i < n_samples; i++) {",
+            "        int rc = timber_infer_single(",
+            "            inputs + i * TIMBER_N_FEATURES,",
+            "            outputs + i * TIMBER_N_OUTPUTS,",
+            "            ctx",
+            "        );",
+            "        if (rc != 0) return rc;",
+            "    }",
+            "    return 0;",
+            "}",
+        ]
+
     def _emit_cmake(self, ir: TimberIR) -> str:
         """Generate CMakeLists.txt for the compiled model."""
         lines = [
@@ -495,34 +950,71 @@ class C99Emitter:
         return "\n".join(lines) + "\n"
 
     def _emit_makefile(self, ir: TimberIR) -> str:
-        """Generate Makefile as a fallback build system."""
-        arch_flags = ""
-        if "avx512f" in self.target.features:
-            arch_flags = "-mavx512f -mavx512bw"
-        elif "avx2" in self.target.features:
-            arch_flags = "-mavx2 -mfma"
+        """Generate Makefile supporting both host and embedded cross-compilation."""
+        t = self.target
 
-        lines = [
-            "# Makefile — Timber compiled model",
-            "# Generated by Timber v0.1",
-            "",
-            "CC ?= gcc",
-            f"CFLAGS = -std=c99 -O3 -DNDEBUG -fPIC -Wall -Wextra {arch_flags}".strip(),
-            "",
-            ".PHONY: all clean",
-            "",
-            "all: libtimber_model.so libtimber_model.a",
-            "",
-            "libtimber_model.so: model.c model_data.c model.h",
-            "\t$(CC) $(CFLAGS) -shared -o $@ model.c -lm",
-            "",
-            "libtimber_model.a: model.c model_data.c model.h",
-            "\t$(CC) $(CFLAGS) -c -o model.o model.c",
-            "\tar rcs $@ model.o",
-            "",
-            "clean:",
-            "\trm -f *.o *.so *.a",
-        ]
+        # Architecture-specific SIMD flags (host only)
+        simd_flags = ""
+        if not t.embedded:
+            if "avx512f" in t.features:
+                simd_flags = "-mavx512f -mavx512bw"
+            elif "avx2" in t.features:
+                simd_flags = "-mavx2 -mfma"
+
+        cc = f"{t.cross_prefix}gcc" if t.cross_prefix else "gcc"
+        ar = f"{t.cross_prefix}ar" if t.cross_prefix else "ar"
+
+        cpu_flags = t.cpu_flags or simd_flags
+        extra = t.extra_flags or ""
+
+        base_cflags = f"-std=c99 -O2 -DNDEBUG -Wall -Wextra {cpu_flags} {extra}".strip()
+
+        if t.embedded:
+            lines = [
+                "# Makefile — Timber compiled model (embedded target)",
+                f"# Target: {t.arch}  ABI: {t.abi}",
+                "# Generated by Timber — DO NOT EDIT",
+                "",
+                f"CC  = {cc}",
+                f"AR  = {ar}",
+                f"CFLAGS = {base_cflags}",
+                "",
+                ".PHONY: all clean",
+                "",
+                "all: libtimber_model.a timber_model.o",
+                "",
+                "timber_model.o: model.c model_data.c model.h",
+                "\t$(CC) $(CFLAGS) -c -o $@ model.c",
+                "",
+                "libtimber_model.a: timber_model.o",
+                "\t$(AR) rcs $@ timber_model.o",
+                "",
+                "clean:",
+                "\trm -f *.o *.a",
+            ]
+        else:
+            fpic = "-fPIC"
+            lines = [
+                "# Makefile — Timber compiled model",
+                "# Generated by Timber — DO NOT EDIT",
+                "",
+                "CC ?= gcc",
+                f"CFLAGS = -std=c99 -O3 -DNDEBUG {fpic} -Wall -Wextra {cpu_flags}".strip(),
+                "",
+                ".PHONY: all clean",
+                "",
+                "all: libtimber_model.so libtimber_model.a",
+                "",
+                "libtimber_model.so: model.c model_data.c model.h",
+                "\t$(CC) $(CFLAGS) -shared -o $@ model.c -lm",
+                "",
+                "libtimber_model.a: model.c model_data.c model.h",
+                "\t$(CC) $(CFLAGS) -c -o model.o model.c",
+                "\tar rcs $@ model.o",
+                "",
+                "clean:",
+                "\trm -f *.o *.so *.a",
+            ]
 
         return "\n".join(lines) + "\n"
 

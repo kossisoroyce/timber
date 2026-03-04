@@ -1,5 +1,5 @@
 site_name: Timber
-site_description: Classical ML Inference Compiler — compile tree-based models to native C
+site_description: Classical ML Inference Compiler — compile XGBoost, LightGBM, sklearn, CatBoost, and ONNX models to C99 / LLVM IR / WASM
 site_url: https://kossisoroyce.github.io/timber/
 repo_url: https://github.com/kossisoroyce/timber
 repo_name: kossisoroyce/timber
@@ -51,6 +51,8 @@ nav:
   - Changelog: ../CHANGELOG.md
 
 extra:
+  version:
+    provider: mike
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/kossisoroyce/timber

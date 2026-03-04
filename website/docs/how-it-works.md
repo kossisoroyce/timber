@@ -26,9 +26,9 @@ Model Artifact (.json, .pkl, .txt, .onnx)
          │
          ▼
 ┌──────────────────┐
-│   Back-End       │  3 code emitters
+│   Back-End       │  4 code emitters
 │   (C99/WASM/     │  → Self-contained source
-│    MISRA-C)      │
+│  MISRA-C/LLVM)   │
 └────────┬─────────┘
          │
          ▼
@@ -54,7 +54,7 @@ Each supported framework has a dedicated parser that converts its native format 
 | LightGBM | `lightgbm_parser` | Text model | Handles negative-indexed leaf references |
 | scikit-learn | `sklearn_parser` | Pickle | Supports Pipelines with StandardScaler |
 | CatBoost | `catboost_parser` | JSON export | Expands oblivious (symmetric) trees |
-| ONNX | `onnx_parser` | Protobuf | Handles TreeEnsemble ML operators |
+| ONNX | `onnx_parser` | Protobuf | TreeEnsemble, LinearClassifier/Regressor, SVMClassifier/Regressor, Normalizer, Scaler |
 
 **Auto-detection** inspects file extension and content to select the right parser automatically.
 

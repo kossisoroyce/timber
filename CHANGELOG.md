@@ -11,6 +11,63 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [0.4.0] — 2026-03-04
+
+### Added
+
+- **ONNX Linear/SVM/Normalizer/Scaler frontend** — `parse_onnx_model()` now handles six additional ONNX ML opset operators beyond `TreeEnsemble`:
+  - `LinearClassifier` — binary (sigmoid) and multiclass (softmax), with correct per-row weight extraction
+  - `LinearRegressor` — identity activation, arbitrary output dimensionality
+  - `SVMClassifier` — RBF and linear kernels, full support-vector matrix extraction
+  - `SVMRegressor` — same kernel support as classifier
+  - `Normalizer` — L1 / L2 / Max normalization as a `NormalizerStage` preprocessing step
+  - `Scaler` — mean-shift / scale as a `ScalerStage` preprocessing step; fuses with downstream trees via pipeline fusion
+- **`LinearStage` IR node** — new `PipelineStage` subclass holding weights, biases, activation (`none` / `sigmoid` / `softmax`), `n_classes`, and `multi_weights` flag; full JSON serialization round-trip
+- **`SVMStage` IR node** — new `PipelineStage` subclass holding support-vector matrix, dual coefficients, rho, gamma, coef0, degree, and kernel type; full JSON serialization round-trip
+- **`NormalizerStage` IR node** — new `PipelineStage` subclass; full JSON serialization round-trip
+- **C99 emitter: Linear and SVM backends** — `C99Emitter.emit()` now dispatches `LinearStage` and `SVMStage` to dedicated emitters:
+  - `_emit_inference_linear` — unrolled dot product, sigmoid (binary), softmax (multiclass), or identity (regression)
+  - `_emit_inference_svm` — RBF kernel (`exp(-γ·‖x−sv‖²)`) or linear kernel, with `tanh` post-transform
+  - All outputs are bounded to `n_outputs` to prevent any buffer overflow
+- **Embedded deployment profiles** — `TargetSpec.for_embedded(profile)` selects cross-compilation toolchains for four targets; the Makefile emitted by `C99Emitter` switches automatically:
+  - `cortex-m4` — `arm-none-eabi-gcc -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard`
+  - `cortex-m33` — `arm-none-eabi-gcc -mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -mfloat-abi=hard`
+  - `rv32imf` — `riscv32-unknown-elf-gcc -march=rv32imf -mabi=ilp32f`
+  - `rv64gc` — `riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d`
+  - No `-fPIC` or `-shared` flags on embedded targets; produces `.a` static libraries instead of `.so`
+- **LLVM IR backend** (`timber/codegen/llvm_ir.py`) — new `LLVMIREmitter` supporting `TreeEnsembleStage`, `LinearStage`, and `SVMStage`; configurable target triple (`x86_64`, `aarch64`, `cortex-m4`, …); produces `model.ll` with SSA form, named `traverse_tree_N` per-tree functions, and the `timber_infer_single` entry point
+- **Differential privacy module** (`timber/privacy/dp.py`) — `apply_dp_noise(outputs, cfg)` injects calibrated noise into inference outputs; features:
+  - Laplace mechanism: scale = `sensitivity / epsilon`
+  - Gaussian mechanism: σ = `√(2 ln(1.25/δ)) · sensitivity / epsilon`
+  - `DPConfig` — validates `epsilon > 0`, `sensitivity > 0`, `delta ∈ (0,1)` for Gaussian, mechanism name
+  - `DPReport` — returns `noise_scale`, `mechanism`, `n_outputs_noised`, `epsilon`, `delta`
+  - `calibrate_epsilon(noise_level, sensitivity, mechanism)` — invert the mechanism to find required ε
+  - Input dtype preserved (float32/float64 round-trips exactly); optional output clipping via `clip_outputs`, `output_min`, `output_max`
+  - Deterministic replay with `seed` parameter
+- **`bench` command enhancements** — richer reporting beyond latency:
+  - `--iters N` flag for total timed iterations (default: 1 000)
+  - P50 / P95 / P99 / P999 latency percentiles
+  - Coefficient of variation (CV%) as a stability indicator
+  - `--report PATH` writes a structured JSON report *and* a self-contained HTML file (no external dependencies) with a sortable results table and system-info block
+  - `_bench_report_html()` helper for programmatic HTML generation
+- **Nuclear-grade test suite** (`tests/test_nuclear.py`) — 139 new tests (436 total passing) covering: IR layer, sklearn/ONNX parsers, numeric accuracy (C99 vs Python IR), all optimizer passes + idempotency + pipeline fusion math verification, diff compiler, C99/WASM/MISRA-C/LLVM IR emitters, differential privacy statistical correctness, and full end-to-end pipelines
+
+### Fixed
+
+- **ONNX `classlabels_ints` attribute name** — parser was reading `classlabels_int64s` (wrong); multiclass models always reported `n_classes = 2`, producing incorrect weight slicing and garbage softmax outputs
+- **Binary ONNX `LinearClassifier` double weight row** — `skl2onnx` emits both class rows for binary models; parser now extracts only the positive-class row and sets `multi_weights = False`, fixing incorrect weight counts and index misalignment
+- **C99 buffer overflow guard** — `multi_weights = True` softmax loop now bounded by `n_outputs` (not `n_classes`), preventing out-of-bounds writes when the output buffer is smaller than the number of internal score slots
+
+### Changed
+
+- ONNX supported-operator list expanded from `TreeEnsemble{Classifier,Regressor}` to include `LinearClassifier`, `LinearRegressor`, `SVMClassifier`, `SVMRegressor`, `Normalizer`, `ZipMap`, `Scaler`
+- `C99Emitter.emit()` dispatch table extended; unknown primary stage now raises `ValueError("No supported primary stage")`
+- `pyproject.toml` development status upgraded from `3 - Alpha` to `4 - Beta`
+- `[project.optional-dependencies]` gains `privacy = ["numpy>=1.24"]` and `full` gains `onnx>=1.14`, `skl2onnx>=1.15`
+- Test count: 297 → 436
+
+---
+
 ## [0.3.0] — 2026-03-04
 
 ### Added
@@ -99,5 +156,8 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - `bench --warmup-iters` value was silently capped at 100; now uses the full user-supplied value
 - `timber list` model names printed before table (cosmetic ordering); names now appear after
 
-[Unreleased]: https://github.com/kossisoroyce/timber/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kossisoroyce/timber/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kossisoroyce/timber/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/kossisoroyce/timber/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/kossisoroyce/timber/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kossisoroyce/timber/releases/tag/v0.1.0

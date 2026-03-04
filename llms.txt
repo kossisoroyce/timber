@@ -4,7 +4,7 @@ This file is a comprehensive single-file reference for Timber, designed for use
 by language models, code assistants, and AI tooling. It covers the full public
 API, CLI, IR, code generation, and HTTP server.
 
-Version: 0.2.0
+Version: 0.4.0
 License: Apache-2.0
 PyPI: timber-compiler
 Repository: https://github.com/kossisoroyce/timber
@@ -14,9 +14,10 @@ Docs: https://kossisoroyce.github.io/timber/
 
 ## What Timber Is
 
-Timber is a classical ML inference compiler. It takes a trained tree-based model
-file (XGBoost JSON, LightGBM text, scikit-learn pickle, CatBoost JSON, or ONNX)
-and compiles it into a self-contained C99 shared library. A built-in HTTP server
+Timber is a classical ML inference compiler. It takes a trained ML model
+file (XGBoost JSON, LightGBM text, scikit-learn pickle, CatBoost JSON, or ONNX
+— including linear models and SVMs) and compiles it into a self-contained C99
+shared library, LLVM IR, or WebAssembly module. A built-in HTTP server
 (Ollama-compatible API) serves the compiled model.
 
 Key properties:

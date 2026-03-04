@@ -454,16 +454,29 @@ def validate(artifact, reference, data_path, fmt, tolerance):
 @click.option("--data", "data_path", required=True, type=click.Path(exists=True), help="Benchmark data CSV")
 @click.option("--batch-sizes", default="1,16,64,256", help="Comma-separated batch sizes to test")
 @click.option("--warmup-iters", default=1000, type=int, help="Warmup iterations before timing")
+@click.option("--iters", default=0, type=int, help="Timed iterations per batch size (0=auto)")
 @click.option("--format", "fmt", default=None, help="Model format hint")
-def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
+@click.option("--report", "report_path", default=None, type=click.Path(), help="Write reproducibility report to file (.json or .html)")
+def bench(artifact, data_path, batch_sizes, warmup_iters, iters, fmt, report_path):
     """Benchmark inference performance.
 
-    Reports latency (P50/P95/P99), throughput, and memory usage.
-    """
-    click.echo("Timber Benchmark")
-    click.echo(f"{'='*50}")
+    Reports latency (P50/P95/P99/P99.9), throughput, CV, and memory usage.
+    Optionally writes a reproducibility report with system info to JSON or HTML.
 
-    # Try loading as compiled IR first, then as raw model
+    \b
+    Example:
+        timber bench --artifact model.json --data test.csv --report report.html
+    """
+    import json as _json
+    import platform
+    import datetime
+
+    con = _con()
+    _rich_header(con, "Classical ML Inference Compiler")
+    click.echo("Timber Benchmark")
+    click.echo(f"{'='*60}")
+
+    # ── Load IR ────────────────────────────────────────────────────────────
     artifact_path = Path(artifact)
     ir_path = None
     if artifact_path.is_dir():
@@ -492,7 +505,7 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
         click.echo("Error: no tree ensemble found", err=True)
         sys.exit(1)
 
-    # Load data
+    # ── Load data ──────────────────────────────────────────────────────────
     try:
         data = np.loadtxt(data_path, delimiter=",", skiprows=1, dtype=np.float32)
         if data.ndim == 1:
@@ -500,6 +513,31 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
     except Exception as exc:
         click.echo(f"Error loading data: {exc}", err=True)
         sys.exit(1)
+
+    # ── System info ────────────────────────────────────────────────────────
+    sys_info = {
+        "platform": platform.platform(),
+        "python":   platform.python_version(),
+        "cpu":      platform.processor() or platform.machine(),
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+    try:
+        import psutil
+        sys_info["cpu_physical_cores"] = psutil.cpu_count(logical=False)
+        sys_info["cpu_logical_cores"]  = psutil.cpu_count(logical=True)
+        sys_info["ram_gb"] = round(psutil.virtual_memory().total / (1024 ** 3), 1)
+    except ImportError:
+        pass
+
+    model_info = {
+        "artifact": str(artifact),
+        "n_trees":  ensemble.n_trees,
+        "max_depth": ensemble.max_depth,
+        "n_features": ensemble.n_features,
+        "n_classes": ensemble.n_classes,
+        "objective": ensemble.objective.value,
+        "n_samples": data.shape[0],
+    }
 
     click.echo(f"Model:       {artifact}")
     click.echo(f"Trees:       {ensemble.n_trees}")
@@ -511,13 +549,19 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
 
     sizes = [int(s.strip()) for s in batch_sizes.split(",")]
 
-    click.echo(f"{'Batch':>8s}  {'P50 (μs)':>10s}  {'P95 (μs)':>10s}  {'P99 (μs)':>10s}  {'Throughput':>14s}")
-    click.echo(f"{'-'*8}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*14}")
+    hdr = (f"{'Batch':>8s}  {'Min (μs)':>10s}  {'P50 (μs)':>10s}  "
+           f"{'P95 (μs)':>10s}  {'P99 (μs)':>10s}  {'P99.9 (μs)':>12s}  "
+           f"{'Throughput':>14s}  {'CV %':>6s}")
+    sep = (f"{'-'*8}  {'-'*10}  {'-'*10}  "
+           f"{'-'*10}  {'-'*10}  {'-'*12}  "
+           f"{'-'*14}  {'-'*6}")
+    click.echo(hdr)
+    click.echo(sep)
 
+    results = []
     for bs in sizes:
         batch = data[:bs]
         if len(batch) < bs:
-            # Tile if needed
             repeats = (bs // len(batch)) + 1
             batch = np.tile(data, (repeats, 1))[:bs]
 
@@ -526,26 +570,134 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, fmt):
             for i in range(len(batch)):
                 _ir_predict_single(ensemble, batch[i])
 
-        # Timed runs
-        n_runs = max(100, 1000 // bs)
-        latencies = []
+        # Timed runs — more iterations for small batches
+        n_runs = iters if iters > 0 else max(200, 2000 // max(bs, 1))
+        latencies: list[float] = []
         for _ in range(n_runs):
             t0 = time.perf_counter_ns()
             for i in range(len(batch)):
                 _ir_predict_single(ensemble, batch[i])
             elapsed_ns = time.perf_counter_ns() - t0
-            latencies.append(elapsed_ns / 1000.0)  # to microseconds
+            latencies.append(elapsed_ns / 1_000.0)  # μs
 
         latencies.sort()
-        p50 = latencies[len(latencies) // 2]
-        p95 = latencies[int(len(latencies) * 0.95)]
-        p99 = latencies[int(len(latencies) * 0.99)]
-        throughput = bs / (p50 / 1e6) if p50 > 0 else 0  # samples/sec
+        n = len(latencies)
+        p50   = latencies[n // 2]
+        p95   = latencies[int(n * 0.95)]
+        p99   = latencies[int(n * 0.99)]
+        p999  = latencies[min(int(n * 0.999), n - 1)]
+        mn    = latencies[0]
+        mean  = sum(latencies) / n
+        std   = (sum((x - mean) ** 2 for x in latencies) / n) ** 0.5
+        cv    = (std / mean * 100.0) if mean > 0 else 0.0
+        throughput = bs / (p50 / 1e6) if p50 > 0 else 0.0
 
-        click.echo(f"{bs:>8d}  {p50:>10.1f}  {p95:>10.1f}  {p99:>10.1f}  {throughput:>11.0f}/s")
+        click.echo(
+            f"{bs:>8d}  {mn:>10.1f}  {p50:>10.1f}  "
+            f"{p95:>10.1f}  {p99:>10.1f}  {p999:>12.1f}  "
+            f"{throughput:>11.0f}/s  {cv:>5.1f}%"
+        )
+        results.append({
+            "batch_size":  bs,
+            "n_runs":      n_runs,
+            "min_us":      round(mn, 2),
+            "p50_us":      round(p50, 2),
+            "p95_us":      round(p95, 2),
+            "p99_us":      round(p99, 2),
+            "p999_us":     round(p999, 2),
+            "mean_us":     round(mean, 2),
+            "std_us":      round(std, 2),
+            "cv_pct":      round(cv, 2),
+            "throughput_samples_per_sec": round(throughput, 1),
+        })
 
     click.echo()
-    click.echo("Note: These are Python-interpreted IR benchmarks. Compiled C artifacts will be significantly faster.")
+    click.echo("Note: Python-interpreted IR. Compiled C artifacts are significantly faster.")
+
+    # ── Reproducibility report ──────────────────────────────────────────────
+    if report_path:
+        report_data = {
+            "timber_version": "0.2.0",
+            "system":  sys_info,
+            "model":   model_info,
+            "results": results,
+        }
+        rp = Path(report_path)
+        if rp.suffix.lower() == ".html":
+            html = _bench_report_html(report_data)
+            rp.write_text(html, encoding="utf-8")
+        else:
+            rp.write_text(_json.dumps(report_data, indent=2), encoding="utf-8")
+        click.echo(f"\nReport written to: {rp}")
+
+
+def _bench_report_html(report: dict) -> str:
+    """Render a benchmark reproducibility report as HTML."""
+    import json as _json
+
+    sys_rows = "".join(
+        f"<tr><td>{k}</td><td>{v}</td></tr>"
+        for k, v in report["system"].items()
+    )
+    model_rows = "".join(
+        f"<tr><td>{k}</td><td>{v}</td></tr>"
+        for k, v in report["model"].items()
+    )
+    result_headers = [
+        "Batch", "Runs", "Min (μs)", "P50 (μs)", "P95 (μs)",
+        "P99 (μs)", "P99.9 (μs)", "Mean (μs)", "Std (μs)", "CV %",
+        "Throughput (samp/s)",
+    ]
+    result_rows_html = ""
+    for r in report["results"]:
+        cells = "".join(f"<td>{r.get(k, '')}</td>" for k in [
+            "batch_size", "n_runs", "min_us", "p50_us", "p95_us",
+            "p99_us", "p999_us", "mean_us", "std_us", "cv_pct",
+            "throughput_samples_per_sec",
+        ])
+        result_rows_html += f"<tr>{cells}</tr>"
+
+    result_header_html = "".join(f"<th>{h}</th>" for h in result_headers)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Timber Benchmark Report</title>
+<style>
+  body {{ font-family: 'Segoe UI', system-ui, sans-serif; background:#0f1117; color:#e0e0e0; margin:2rem; }}
+  h1 {{ color:#7ee8a2; }} h2 {{ color:#90caf9; border-bottom:1px solid #333; padding-bottom:.3rem; }}
+  table {{ border-collapse:collapse; width:100%; margin-bottom:2rem; }}
+  th {{ background:#1e2a3a; color:#90caf9; padding:.5rem 1rem; text-align:left; }}
+  td {{ padding:.4rem 1rem; border-bottom:1px solid #222; font-variant-numeric:tabular-nums; }}
+  tr:hover td {{ background:#1a1f2e; }}
+  .badge {{ display:inline-block; background:#1e2a3a; border-radius:4px; padding:.2rem .6rem;
+             font-size:.85rem; color:#7ee8a2; margin:.2rem; }}
+  pre {{ background:#1e1e2e; padding:1rem; border-radius:6px; overflow:auto; }}
+</style>
+</head>
+<body>
+<h1>Timber Benchmark Report</h1>
+<p>Generated: <span class="badge">{report["system"].get("timestamp","")}</span>
+   Timber: <span class="badge">v{report.get("timber_version","")}</span></p>
+
+<h2>System</h2>
+<table><tbody>{sys_rows}</tbody></table>
+
+<h2>Model</h2>
+<table><tbody>{model_rows}</tbody></table>
+
+<h2>Results Matrix</h2>
+<table>
+  <thead><tr>{result_header_html}</tr></thead>
+  <tbody>{result_rows_html}</tbody>
+</table>
+
+<h2>Raw JSON</h2>
+<pre>{_json.dumps(report, indent=2)}</pre>
+</body>
+</html>"""
 
 
 def _ir_predict_single(ensemble, sample: np.ndarray) -> float:

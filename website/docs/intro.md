@@ -57,11 +57,11 @@ curl http://localhost:11434/api/predict \
 ## What Timber Supports
 
 ### Input Frameworks
-- **XGBoost** — JSON model dumps (v2.0+)
+- **XGBoost** — JSON model dumps (v2.0+), XGBoost 3.1+ per-class base_score
 - **LightGBM** — Text model files
 - **scikit-learn** — Pickle files (GradientBoosting, RandomForest, Pipeline)
 - **CatBoost** — JSON exports (oblivious trees)
-- **ONNX** — TreeEnsemble operators from ML opset
+- **ONNX** — TreeEnsemble, LinearClassifier/Regressor, SVMClassifier/Regressor, Normalizer, Scaler
 
 ### Optimization Passes
 1. Dead leaf elimination
@@ -72,15 +72,19 @@ curl http://localhost:11434/api/predict \
 6. Vectorization analysis
 
 ### Output Targets
-- **C99** — Shared libraries for servers, embedded systems
-- **WebAssembly** — Browser and edge deployment
-- **MISRA-C** — Safety-critical (automotive, medical, avionics)
+- **C99** — Shared (`.so`) or static (`.a`) libraries; embedded cross-compilation via Cortex-M4/M33, RISC-V profiles
+- **LLVM IR** — `.ll` text IR with configurable target triple for hardware-specific optimization
+- **WebAssembly** — `.wat` + JS bindings for browser and edge deployment
+- **MISRA-C:2012** — Safety-critical C with built-in 8-rule compliance checker
 
 ### Production Features
 - Deterministic JSON **audit trails** for regulatory compliance
+- **Differential privacy** inference — Laplace and Gaussian noise mechanisms
 - **Differential compilation** for incremental model updates
 - **Ensemble composition** (voting, stacking)
+- Multi-worker FastAPI server with `GET /api/metrics` (P50/P95/P99/P999 rolling window)
 - Thread-safe, zero-allocation generated code
+- 436-test nuclear-grade test suite
 
 ## Next Steps
 

@@ -103,7 +103,9 @@ All concrete stages inherit from this. `stage_type` is set by `__post_init__`.
 | `"encoder"` | `EncoderStage` | Categorical feature encoding |
 | `"imputer"` | `ImputerStage` | Missing value imputation |
 | `"tree_ensemble"` | `TreeEnsembleStage` | GBT or random forest inference |
-| `"linear"` | `LinearStage` | Linear layer (logistic regression, etc.) |
+| `"linear"` | `LinearStage` | Linear classifier / regressor (logistic regression, linear SVM) |
+| `"svm"` | `SVMStage` | Support vector machine (RBF or linear kernel) |
+| `"normalizer"` | `NormalizerStage` | Row-wise L1 / L2 / Max normalization |
 | `"aggregator"` | `AggregatorStage` | Voting / stacking aggregation |
 
 ---
@@ -258,6 +260,91 @@ while not node.is_leaf:
         go to nodes[node.right_child]
 return node.leaf_value
 ```
+
+---
+
+## LinearStage
+
+Represents a fully-connected linear layer: logistic regression (binary or multiclass) or linear regression.
+Produced by the ONNX `LinearClassifier` and `LinearRegressor` parsers.
+
+```python
+@dataclass
+class LinearStage(PipelineStage):
+    weights: list[list[float]]  # shape [n_outputs, n_features] when multi_weights=True
+                                # shape [1, n_features] when multi_weights=False
+    biases: list[float]         # length n_outputs
+    activation: str             # "none" | "sigmoid" | "softmax"
+    n_classes: int
+    multi_weights: bool
+    n_features: int
+    n_outputs: int
+```
+
+| Field | Description |
+|-------|-------------|
+| `weights` | Weight matrix. `multi_weights=False`: single row used for binary sigmoid. `multi_weights=True`: one row per class for softmax. |
+| `biases` | Intercept / bias vector. |
+| `activation` | `"sigmoid"` for binary classification, `"softmax"` for multiclass, `"none"` for regression. |
+| `n_classes` | Number of target classes (1 for regression, 2 for binary, K for K-class). |
+| `multi_weights` | `True` when the weight matrix has one row per output class. |
+
+**C99 output:**
+- `"sigmoid"`: `outputs[0] = 1 / (1 + exp(-(w · x + b)))`
+- `"softmax"`: `outputs[c] = exp(score[c]) / Σ exp(score[k])` (numerically stable, double precision)
+- `"none"`: `outputs[0] = w · x + b`
+
+---
+
+## SVMStage
+
+Represents a support vector machine classifier or regressor.
+Produced by the ONNX `SVMClassifier` and `SVMRegressor` parsers.
+
+```python
+@dataclass
+class SVMStage(PipelineStage):
+    support_vectors: list[list[float]]  # shape [n_support_vectors, n_features]
+    dual_coef: list[float]              # shape [n_support_vectors]
+    rho: float                          # intercept
+    kernel: str                         # "rbf" | "linear" | "poly" | "sigmoid"
+    gamma: float                        # RBF kernel parameter
+    coef0: float                        # polynomial / sigmoid kernel parameter
+    degree: int                         # polynomial degree
+    n_features: int
+    n_outputs: int
+    is_classifier: bool
+```
+
+| Field | Description |
+|-------|-------------|
+| `support_vectors` | Training support vectors retained from `model.support_vectors_`. |
+| `dual_coef` | Dual coefficients `α_i · y_i` from `model.dual_coef_`. |
+| `rho` | Intercept term (`−model.intercept_`). |
+| `kernel` | Kernel function. `"rbf"` and `"linear"` fully supported in C99. |
+| `gamma` | Bandwidth for RBF: `exp(−gamma · ‖x − sv‖²)`. |
+
+**C99 output (RBF):** `output = tanh(Σ dual_coef[i] · exp(−gamma · ‖x − sv_i‖²) + rho)`
+
+---
+
+## NormalizerStage
+
+Row-wise normalization applied as a preprocessing step before the primary stage.
+Produced by the ONNX `Normalizer` operator.
+
+```python
+@dataclass
+class NormalizerStage(PipelineStage):
+    norm: str        # "L1" | "L2" | "Max"
+    n_features: int
+```
+
+| `norm` | Transform |
+|--------|-----------|
+| `"L1"` | divide each element by the sum of absolute values |
+| `"L2"` | divide each element by the Euclidean norm |
+| `"Max"` | divide each element by the maximum absolute value |
 
 ---
 

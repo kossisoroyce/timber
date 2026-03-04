@@ -118,7 +118,7 @@ class TestC99Emitter:
     def test_no_ensemble_raises(self):
         ir = TimberIR()
         emitter = C99Emitter()
-        with pytest.raises(ValueError, match="No tree ensemble"):
+        with pytest.raises(ValueError, match="No supported primary stage"):
             emitter.emit(ir)
 
     def test_header_c_abi(self):

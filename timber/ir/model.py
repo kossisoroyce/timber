@@ -197,13 +197,60 @@ class TreeEnsembleStage(PipelineStage):
 
 @dataclass
 class LinearStage(PipelineStage):
-    """Dot product + bias with optional nonlinearity."""
+    """Dot product + bias with optional nonlinearity.
+
+    For multiclass, weights is row-major [n_classes x n_features] and
+    multi_weights is set to True.  For binary/regression, weights is
+    a flat [n_features] vector.
+    """
     weights: list[float] = field(default_factory=list)
     bias: float = 0.0
-    activation: str = "none"  # none, sigmoid, softmax
+    activation: str = "none"   # none, sigmoid, softmax, logistic
+    n_classes: int = 1         # > 1 for multiclass linear
+    multi_weights: bool = False  # True when weights is [n_classes x n_features]
+    biases: list[float] = field(default_factory=list)  # per-class biases (multiclass)
 
     def __post_init__(self):
         self.stage_type = "linear"
+
+
+@dataclass
+class SVMStage(PipelineStage):
+    """Support Vector Machine (classification or regression).
+
+    Supports kernel types: linear, rbf, poly, sigmoid.
+    Decision function for classification:
+        f(x) = sum_i(alpha_i * K(x, sv_i)) + rho
+    where K is the kernel function.
+    """
+    kernel_type: str = "rbf"      # linear | rbf | poly | sigmoid
+    support_vectors: list[list[float]] = field(default_factory=list)
+    dual_coef: list[float] = field(default_factory=list)
+    rho: list[float] = field(default_factory=list)
+    n_support: list[int] = field(default_factory=list)
+    gamma: float = 1.0
+    coef0: float = 0.0
+    degree: int = 3
+    n_features: int = 0
+    n_classes: int = 2
+    objective: Objective = Objective.BINARY_CLASSIFICATION
+    post_transform: str = "none"  # none | logistic | softmax | probit
+
+    def __post_init__(self):
+        self.stage_type = "svm"
+
+    @property
+    def n_sv(self) -> int:
+        return len(self.support_vectors)
+
+
+@dataclass
+class NormalizerStage(PipelineStage):
+    """Input normalization: L1, L2, or MAX norm per sample."""
+    norm: str = "l2"   # l1 | l2 | max
+
+    def __post_init__(self):
+        self.stage_type = "normalizer"
 
 
 @dataclass
@@ -375,6 +422,24 @@ def _stage_to_dict(s: PipelineStage) -> dict[str, Any]:
         d["weights"] = s.weights
         d["bias"] = s.bias
         d["activation"] = s.activation
+        d["n_classes"] = s.n_classes
+        d["multi_weights"] = s.multi_weights
+        d["biases"] = s.biases
+    elif isinstance(s, SVMStage):
+        d["kernel_type"] = s.kernel_type
+        d["support_vectors"] = s.support_vectors
+        d["dual_coef"] = s.dual_coef
+        d["rho"] = s.rho
+        d["n_support"] = s.n_support
+        d["gamma"] = s.gamma
+        d["coef0"] = s.coef0
+        d["degree"] = s.degree
+        d["n_features"] = s.n_features
+        d["n_classes"] = s.n_classes
+        d["objective"] = s.objective.value
+        d["post_transform"] = s.post_transform
+    elif isinstance(s, NormalizerStage):
+        d["norm"] = s.norm
     elif isinstance(s, AggregatorStage):
         d["method"] = s.method
         d["source_stages"] = s.source_stages
@@ -428,6 +493,32 @@ def _stage_from_dict(d: dict[str, Any]) -> PipelineStage:
             weights=d.get("weights", []),
             bias=d.get("bias", 0.0),
             activation=d.get("activation", "none"),
+            n_classes=d.get("n_classes", 1),
+            multi_weights=d.get("multi_weights", False),
+            biases=d.get("biases", []),
+        )
+    if st == "svm":
+        return SVMStage(
+            stage_name=name,
+            stage_type=st,
+            kernel_type=d.get("kernel_type", "rbf"),
+            support_vectors=d.get("support_vectors", []),
+            dual_coef=d.get("dual_coef", []),
+            rho=d.get("rho", []),
+            n_support=d.get("n_support", []),
+            gamma=d.get("gamma", 1.0),
+            coef0=d.get("coef0", 0.0),
+            degree=d.get("degree", 3),
+            n_features=d.get("n_features", 0),
+            n_classes=d.get("n_classes", 2),
+            objective=Objective(d.get("objective", "binary:logistic")),
+            post_transform=d.get("post_transform", "none"),
+        )
+    if st == "normalizer":
+        return NormalizerStage(
+            stage_name=name,
+            stage_type=st,
+            norm=d.get("norm", "l2"),
         )
     if st == "aggregator":
         return AggregatorStage(

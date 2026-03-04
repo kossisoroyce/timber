@@ -23,7 +23,7 @@
 
 ---
 
-Timber takes a trained tree-based model — XGBoost, LightGBM, scikit-learn, CatBoost, or ONNX — runs it through a multi-pass optimizing compiler, and emits a **self-contained C99 inference binary** with zero runtime dependencies. A built-in HTTP server (Ollama-compatible API) lets you serve any model — local file or remote URL — in one command.
+Timber takes a trained ML model — XGBoost, LightGBM, scikit-learn, CatBoost, or ONNX (tree ensembles, linear models, SVMs) — runs it through a multi-pass optimizing compiler, and emits a **self-contained C99 inference artifact** with zero runtime dependencies. A built-in HTTP server (Ollama-compatible API) lets you serve any model — local file or remote URL — in one command.
 
 > **~2 µs single-sample inference · ~336× faster than Python XGBoost · ~48 KB artifact · zero runtime dependencies**
 
@@ -178,10 +178,10 @@ curl -s http://localhost:11434/api/predict \
 
 | Framework | File format | Notes |
 |-----------|-------------|-------|
-| XGBoost | `.json` | All objectives; multiclass, binary, regression |
+| XGBoost | `.json` | All objectives; multiclass, binary, regression; XGBoost 3.1+ per-class base_score |
 | LightGBM | `.txt`, `.model`, `.lgb` | All objectives including multiclass |
 | scikit-learn | `.pkl`, `.pickle` | GradientBoostingClassifier/Regressor, RandomForest, ExtraTrees, DecisionTree, Pipeline |
-| ONNX | `.onnx` | `TreeEnsembleClassifier` and `TreeEnsembleRegressor` ML operators |
+| ONNX | `.onnx` | `TreeEnsembleClassifier/Regressor`, `LinearClassifier/Regressor`, `SVMClassifier/Regressor`, `Normalizer`, `Scaler` |
 | CatBoost | `.json` | JSON export (`save_model(..., format='json')`) |
 
 ---
@@ -218,10 +218,12 @@ See [`benchmarks/`](benchmarks/) for full methodology, hardware capture script, 
 | **Latency** | ~2 µs | 100s of µs–ms | ~100 µs | ~10–30 µs | ~50 µs |
 | **Runtime deps** | None | Python + framework | ONNX Runtime libs | Treelite runtime | Python + LightGBM |
 | **Artifact size** | ~48 KB | 50–200+ MB process | MBs | MB-scale | Python env |
-| **Formats** | 5 | Each framework only | ONNX only | GBDTs | LightGBM only |
+| **Formats** | 5 (trees + linear + SVM) | Each framework only | ONNX only | GBDTs | LightGBM only |
 | **C export** | Yes (C99) | No | No | Yes | No |
-| **Edge / embedded** | Yes | No | Partial | Partial | No |
-| **Audit / MISRA** | Roadmap | No | No | No | No |
+| **LLVM IR export** | Yes | No | No | No | No |
+| **Edge / embedded** | Yes (Cortex-M4/M33, RISC-V) | No | Partial | Partial | No |
+| **MISRA-C output** | Yes | No | No | No | No |
+| **Differential privacy** | Yes | No | No | No | No |
 
 ---
 
@@ -284,12 +286,13 @@ Each script trains a model, saves it, runs `timber load`, and validates predicti
 
 ## Limitations
 
-- **ONNX** — currently supports `TreeEnsembleClassifier` / `TreeEnsembleRegressor` operators only
+- **ONNX** — supports `TreeEnsemble`, `LinearClassifier/Regressor`, `SVMClassifier/Regressor`, `Normalizer`, `Scaler`; other operators (e.g., neural network layers) are not yet supported
 - **CatBoost** — requires JSON export (`save_model(..., format='json')`); native binary format not supported
 - **scikit-learn** — major estimators and `Pipeline` wrappers are supported; uncommon custom estimators may require a custom front-end
 - **Pickle** — follow standard pickle security hygiene; only load artifacts from trusted sources
 - **XGBoost** — JSON model format is the primary path; binary booster format is not supported
-- **MISRA-C / safety certification** — deterministic output is guaranteed but formal MISRA-C compliance is on the roadmap, not yet certified
+- **LLVM IR** — currently emitted as text (`.ll`); requires a local LLVM/Clang installation to produce native code from it
+- **MISRA-C** — the built-in compliance checker covers the rules most relevant to generated code; it is not a substitute for a certified static analysis tool
 
 ---
 
@@ -300,15 +303,18 @@ Each script trains a model, saves it, runs `timber load`, and validates predicti
 | ✅ | XGBoost, LightGBM, scikit-learn, CatBoost, ONNX front-ends |
 | ✅ | Multi-pass IR optimizer (dead-leaf, quantization, branch sort, scaler fusion) |
 | ✅ | C99 emitter with WebAssembly target |
-| ✅ | Ollama-compatible HTTP inference server |
+| ✅ | Ollama-compatible HTTP inference server with multi-worker FastAPI |
 | ✅ | PyPI packaging with OIDC trusted publishing |
+| ✅ | ONNX Linear/SVM/Normalizer/Scaler operator support |
+| ✅ | ARM Cortex-M4/M33 and RISC-V rv32imf/rv64gc embedded deployment profiles |
+| ✅ | MISRA-C:2012 compliant output mode with built-in compliance checker |
+| ✅ | LLVM IR backend with configurable target triples |
+| ✅ | Differential privacy (Laplace + Gaussian) inference mode |
+| ✅ | Richer `bench` reports: P50/P95/P99/P999, CV%, JSON + HTML output |
 | 🔄 | Remote model registry (`timber pull` from hosted model library) |
-| 🔄 | Broader ONNX operator support (linear, SVM, normalizers) |
-| 🔄 | ARM Cortex-M / RISC-V embedded deployment profiles |
-| 🔄 | MISRA-C compliant output mode for automotive/aerospace |
-| 🔄 | Richer benchmark matrices and public reproducibility report |
-| 🔲 | LLVM IR target for hardware-specific optimization |
-| 🔲 | Differential privacy inference mode |
+| 🔲 | Neural network operator support (MLPClassifier) |
+| 🔲 | ONNX export path (Timber IR → ONNX) |
+| 🔲 | Rust backend emitter |
 
 ---
 
@@ -318,11 +324,11 @@ Each script trains a model, saves it, runs `timber load`, and validates predicti
 git clone https://github.com/kossisoroyce/timber.git
 cd timber
 pip install -e ".[dev]"
-pytest tests/ -v                    # 146 tests
+pytest tests/ -v                    # 436 tests
 ruff check timber/                  # linting
 ```
 
-The test suite covers parsers, IR, optimizer passes, C99 emission, WebAssembly emission, numerical accuracy (± 1e-4), and end-to-end compilation for all supported frameworks.
+The test suite covers: parsers (sklearn, ONNX, XGBoost, LightGBM, CatBoost), IR layer (serialization, deep_copy, all stage types), optimizer passes (correctness, idempotency, pipeline fusion math), C99/WASM/MISRA-C/LLVM IR emitters (compile + numeric accuracy), differential privacy (statistical correctness, all dtypes), and full end-to-end pipelines.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full development guide.
 

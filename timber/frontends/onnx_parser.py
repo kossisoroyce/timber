@@ -1,8 +1,11 @@
-"""ONNX ML opset front-end parser — reads ONNX models with tree ensemble operators.
+"""ONNX ML opset front-end parser — reads ONNX models with ML opset operators.
 
 Supports ONNX ML opset operators:
-  - TreeEnsembleClassifier
-  - TreeEnsembleRegressor
+  - TreeEnsembleClassifier / TreeEnsembleRegressor
+  - LinearClassifier / LinearRegressor
+  - SVMClassifier / SVMRegressor
+  - Normalizer (L1 / L2 / MAX normalization preprocessing)
+  - Scaler (ZipMap-style offset+scale preprocessing)
 
 Requires onnx package to be installed (not a hard Timber dependency).
 """
@@ -16,9 +19,13 @@ from typing import Any
 from timber.ir.model import (
     Field,
     FieldType,
+    LinearStage,
     Metadata,
+    NormalizerStage,
     Objective,
+    ScalerStage,
     Schema,
+    SVMStage,
     TimberIR,
     Tree,
     TreeEnsembleStage,
@@ -26,8 +33,16 @@ from timber.ir.model import (
 )
 
 
+_SUPPORTED_OPS = {
+    "TreeEnsembleClassifier", "TreeEnsembleRegressor",
+    "LinearClassifier", "LinearRegressor",
+    "SVMClassifier", "SVMRegressor",
+    "Normalizer", "Scaler",
+}
+
+
 def parse_onnx_model(path: str | Path) -> TimberIR:
-    """Parse an ONNX model file containing tree ensemble operators."""
+    """Parse an ONNX model file containing ML opset operators."""
     try:
         import onnx
     except ImportError:
@@ -42,19 +57,89 @@ def parse_onnx_model(path: str | Path) -> TimberIR:
 
 
 def _convert_onnx(model: Any, artifact_hash: str = "") -> TimberIR:
-    """Convert an ONNX model with tree ensemble nodes to Timber IR."""
+    """Dispatch to the correct converter based on the primary ML opset operator."""
 
     graph = model.graph
 
-    # Find tree ensemble operator
-    tree_node = None
-    for node in graph.node:
-        if node.op_type in ("TreeEnsembleClassifier", "TreeEnsembleRegressor"):
-            tree_node = node
-            break
+    # Collect preprocessing stages (Normalizer, Scaler) and the primary op
+    pre_stages: list = []
+    primary_node = None
 
-    if tree_node is None:
-        raise ValueError("No TreeEnsembleClassifier or TreeEnsembleRegressor found in ONNX model")
+    for node in graph.node:
+        if node.op_type in ("Normalizer", "Scaler"):
+            pre_stages.append(node)
+        elif node.op_type in _SUPPORTED_OPS and primary_node is None:
+            primary_node = node
+
+    if primary_node is None:
+        supported = ", ".join(sorted(_SUPPORTED_OPS))
+        raise ValueError(
+            f"No supported ONNX ML opset operator found. Supported: {supported}"
+        )
+
+    n_features = _infer_n_features(graph)
+
+    # Build preprocessing pipeline stages
+    pipeline_stages = []
+    for pre in pre_stages:
+        attrs = {a.name: a for a in pre.attribute}
+        if pre.op_type == "Normalizer":
+            norm_type = _get_string(attrs, "norm", "L2").lower()
+            pipeline_stages.append(NormalizerStage(
+                stage_name="normalizer",
+                stage_type="normalizer",
+                norm=norm_type,
+            ))
+        elif pre.op_type == "Scaler":
+            offsets = list(_get_floats(attrs, "offset"))
+            scales = list(_get_floats(attrs, "scale"))
+            feat_indices = list(range(len(offsets) or len(scales)))
+            pipeline_stages.append(ScalerStage(
+                stage_name="scaler",
+                stage_type="scaler",
+                means=offsets,
+                scales=scales,
+                feature_indices=feat_indices,
+            ))
+
+    op = primary_node.op_type
+    if op in ("TreeEnsembleClassifier", "TreeEnsembleRegressor"):
+        main_stages, schema, metadata = _convert_tree_ensemble(
+            primary_node, graph, n_features, artifact_hash
+        )
+    elif op in ("LinearClassifier", "LinearRegressor"):
+        main_stages, schema, metadata = _convert_linear(
+            primary_node, graph, n_features, artifact_hash
+        )
+    elif op in ("SVMClassifier", "SVMRegressor"):
+        main_stages, schema, metadata = _convert_svm(
+            primary_node, graph, n_features, artifact_hash
+        )
+    else:
+        raise ValueError(f"Unhandled operator: {op}")
+
+    return TimberIR(
+        pipeline=pipeline_stages + main_stages,
+        schema=schema,
+        metadata=metadata,
+    )
+
+
+def _infer_n_features(graph: Any) -> int:
+    """Infer the number of input features from the ONNX graph inputs."""
+    for inp in graph.input:
+        shape = inp.type.tensor_type.shape
+        if shape and len(shape.dim) >= 2:
+            dim_val = shape.dim[1].dim_value
+            if dim_val > 0:
+                return dim_val
+    return 0
+
+
+def _convert_tree_ensemble(
+    tree_node: Any, graph: Any, n_features: int, artifact_hash: str
+) -> tuple:
+    """Convert TreeEnsembleClassifier / TreeEnsembleRegressor to IR."""
 
     is_classifier = tree_node.op_type == "TreeEnsembleClassifier"
 
@@ -95,13 +180,6 @@ def _convert_onnx(model: Any, artifact_hash: str = "") -> TimberIR:
     unique_treeids = sorted(set(nodes_treeids))
     n_trees = len(unique_treeids)
 
-    # Determine n_features from input
-    n_features = 0
-    for inp in graph.input:
-        shape = inp.type.tensor_type.shape
-        if shape and len(shape.dim) >= 2:
-            n_features = shape.dim[1].dim_value
-            break
     if n_features == 0:
         n_features = max(nodes_featureids) + 1 if nodes_featureids else 0
 
@@ -231,11 +309,201 @@ def _convert_onnx(model: Any, artifact_hash: str = "") -> TimberIR:
         training_params={"post_transform": post_transform},
     )
 
-    return TimberIR(
-        pipeline=[ensemble],
-        schema=Schema(input_fields=input_fields, output_fields=output_fields),
-        metadata=metadata,
+    return (
+        [ensemble],
+        Schema(input_fields=input_fields, output_fields=output_fields),
+        metadata,
     )
+
+
+def _convert_linear(
+    node: Any, graph: Any, n_features: int, artifact_hash: str
+) -> tuple:
+    """Convert LinearClassifier / LinearRegressor to LinearStage IR."""
+    is_classifier = node.op_type == "LinearClassifier"
+    attrs = {a.name: a for a in node.attribute}
+
+    coefficients = list(_get_floats(attrs, "coefficients"))
+    intercepts = list(_get_floats(attrs, "intercepts"))
+    post_transform = _get_string(attrs, "post_transform", "NONE")
+
+    if is_classifier:
+        # ONNX ML opset uses "classlabels_ints" for LinearClassifier
+        class_labels = _get_ints(attrs, "classlabels_ints")
+        if not class_labels:
+            # Fallback: infer from biases length or weight rows
+            n_bias = len(intercepts)
+            n_classes = n_bias if n_bias > 1 else 2
+        else:
+            n_classes = len(class_labels)
+        if n_classes <= 2:
+            objective = Objective.BINARY_CLASSIFICATION
+        else:
+            objective = Objective.MULTICLASS_CLASSIFICATION
+    else:
+        n_classes = 1
+        objective = Objective.REGRESSION
+
+    # Infer n_features from coefficient length
+    if n_features == 0 and coefficients:
+        n_features = len(coefficients) // max(n_classes, 1)
+
+    # Determine activation from post_transform
+    pt = post_transform.upper()
+    if pt in ("LOGISTIC", "SIGMOID"):
+        activation = "sigmoid"
+    elif pt in ("SOFTMAX", "SOFTMAX_ZERO"):
+        # Binary SOFTMAX from ONNX is logistic — use sigmoid for scalar output
+        activation = "softmax" if n_classes > 2 else "sigmoid"
+    elif pt == "PROBIT":
+        activation = "probit"
+    else:
+        activation = "none"
+
+    # For binary classification (n_classes <= 2): always use a single weight row
+    # and multi_weights=False to emit a scalar decision function.
+    # ONNX may store 2 rows (one per class) — take the positive-class row.
+    if n_classes <= 2 and is_classifier:
+        if n_features > 0 and len(coefficients) >= n_features:
+            weights_1d = coefficients[:n_features]
+        else:
+            weights_1d = coefficients
+        bias_1d = intercepts[0] if intercepts else 0.0
+        stage = LinearStage(
+            stage_name="onnx_linear",
+            stage_type="linear",
+            weights=weights_1d,
+            bias=bias_1d,
+            activation=activation,
+            n_classes=1,
+            multi_weights=False,
+            biases=[],
+        )
+    else:
+        multi = n_classes > 2
+        stage = LinearStage(
+            stage_name="onnx_linear",
+            stage_type="linear",
+            weights=coefficients,
+            bias=intercepts[0] if (intercepts and not multi) else 0.0,
+            activation=activation,
+            n_classes=n_classes,
+            multi_weights=multi,
+            biases=intercepts if multi else [],
+        )
+
+    input_fields = [
+        Field(name=f"f{i}", dtype=FieldType.FLOAT32, index=i)
+        for i in range(n_features)
+    ]
+    n_outputs = 1 if n_classes <= 2 else n_classes
+    output_fields = [
+        Field(name=f"output_{i}", dtype=FieldType.FLOAT32, index=i)
+        for i in range(n_outputs)
+    ]
+
+    onnx_version = _onnx_version()
+    metadata = Metadata(
+        source_framework="onnx",
+        source_framework_version=onnx_version,
+        source_artifact_hash=artifact_hash,
+        objective_name=node.op_type,
+        training_params={"post_transform": post_transform},
+    )
+    return (
+        [stage],
+        Schema(input_fields=input_fields, output_fields=output_fields),
+        metadata,
+    )
+
+
+def _convert_svm(
+    node: Any, graph: Any, n_features: int, artifact_hash: str
+) -> tuple:
+    """Convert SVMClassifier / SVMRegressor to SVMStage IR."""
+    is_classifier = node.op_type == "SVMClassifier"
+    attrs = {a.name: a for a in node.attribute}
+
+    kernel_type = _get_string(attrs, "kernel_type", "RBF").lower()
+    support_vectors_flat = list(_get_floats(attrs, "support_vectors"))
+    coefficients = list(_get_floats(attrs, "coefficients"))
+    rho = list(_get_floats(attrs, "rho"))
+    n_support = list(_get_ints(attrs, "vector_count")) or [len(support_vectors_flat) // max(n_features, 1)]
+    gamma = float(attrs["gamma"].f) if "gamma" in attrs else 1.0
+    coef0 = float(attrs["coef0"].f) if "coef0" in attrs else 0.0
+    degree = int(attrs["degree"].i) if "degree" in attrs else 3
+    post_transform = _get_string(attrs, "post_transform", "NONE")
+
+    if is_classifier:
+        class_labels = _get_ints(attrs, "classlabels_ints")
+        n_classes = len(class_labels) if class_labels else 2
+        objective = Objective.BINARY_CLASSIFICATION if n_classes <= 2 else Objective.MULTICLASS_CLASSIFICATION
+    else:
+        n_classes = 1
+        objective = Objective.REGRESSION
+
+    # Reshape flat support_vectors to list-of-lists
+    n_sv = len(support_vectors_flat) // max(n_features, 1) if n_features > 0 else 0
+    sv_matrix: list[list[float]] = []
+    for i in range(n_sv):
+        sv_matrix.append(support_vectors_flat[i * n_features:(i + 1) * n_features])
+
+    pt = post_transform.upper()
+    if pt in ("LOGISTIC", "SIGMOID"):
+        pt_norm = "logistic"
+    elif pt in ("SOFTMAX",):
+        pt_norm = "softmax"
+    else:
+        pt_norm = "none"
+
+    stage = SVMStage(
+        stage_name="onnx_svm",
+        stage_type="svm",
+        kernel_type=kernel_type,
+        support_vectors=sv_matrix,
+        dual_coef=coefficients,
+        rho=rho,
+        n_support=n_support,
+        gamma=gamma,
+        coef0=coef0,
+        degree=degree,
+        n_features=n_features,
+        n_classes=n_classes,
+        objective=objective,
+        post_transform=pt_norm,
+    )
+
+    input_fields = [
+        Field(name=f"f{i}", dtype=FieldType.FLOAT32, index=i)
+        for i in range(n_features)
+    ]
+    n_outputs = 1 if n_classes <= 2 else n_classes
+    output_fields = [
+        Field(name=f"output_{i}", dtype=FieldType.FLOAT32, index=i)
+        for i in range(n_outputs)
+    ]
+
+    onnx_version = _onnx_version()
+    metadata = Metadata(
+        source_framework="onnx",
+        source_framework_version=onnx_version,
+        source_artifact_hash=artifact_hash,
+        objective_name=node.op_type,
+        training_params={"kernel_type": kernel_type, "post_transform": post_transform},
+    )
+    return (
+        [stage],
+        Schema(input_fields=input_fields, output_fields=output_fields),
+        metadata,
+    )
+
+
+def _onnx_version() -> list:
+    try:
+        import onnx as _onnx
+        return list(map(int, _onnx.__version__.split(".")[:3]))
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------
