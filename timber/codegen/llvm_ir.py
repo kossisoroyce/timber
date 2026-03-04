@@ -25,9 +25,7 @@ The emitted IR uses SSA form with explicit basic blocks per tree node.
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from timber.ir.model import (
     LinearStage,
@@ -36,7 +34,6 @@ from timber.ir.model import (
     TimberIR,
     Tree,
     TreeEnsembleStage,
-    TreeNode,
 )
 
 # ---------------------------------------------------------------------------
@@ -159,8 +156,8 @@ class LLVMIREmitter:
     def _module_footer(self) -> list[str]:
         return [
             "",
-            f'!llvm.module.flags = !{{!0, !1}}',
-            f'!0 = !{{i32 1, !"wchar_size", i32 4}}',
+            '!llvm.module.flags = !{!0, !1}',
+            '!0 = !{i32 1, !"wchar_size", i32 4}',
             f'!1 = !{{i32 {self.opt_level}, !"timber_opt_level", i32 {self.opt_level}}}',
         ]
 
@@ -446,7 +443,7 @@ class LLVMIREmitter:
             f"; Tree {tid}: {len(tree.nodes)} nodes",
             f"define internal {fp} @traverse_tree_{tid}({fp}* nocapture readonly %inputs) local_unnamed_addr #0 {{",
             "entry:",
-            f"  br label %node_0",
+            "  br label %node_0",
         ]
         self._reg = 0
 

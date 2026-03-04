@@ -32,7 +32,6 @@ from timber.ir.model import (
     TreeNode,
 )
 
-
 _SUPPORTED_OPS = {
     "TreeEnsembleClassifier", "TreeEnsembleRegressor",
     "LinearClassifier", "LinearRegressor",

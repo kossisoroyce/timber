@@ -467,9 +467,9 @@ def bench(artifact, data_path, batch_sizes, warmup_iters, iters, fmt, report_pat
     Example:
         timber bench --artifact model.json --data test.csv --report report.html
     """
+    import datetime
     import json as _json
     import platform
-    import datetime
 
     con = _con()
     _rich_header(con, "Classical ML Inference Compiler")

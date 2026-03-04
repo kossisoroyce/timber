@@ -83,7 +83,7 @@ class MisraReport:
 
     def summary(self) -> str:
         lines = [
-            f"MISRA C:2012 Compliance Report",
+            "MISRA C:2012 Compliance Report",
             f"  Rules checked:  {self.rules_checked}",
             f"  Rules passed:   {self.rules_passed}",
             f"  Violations:     {len(self.violations)} "
@@ -132,8 +132,8 @@ class MisraCEmitter:
 
         # Rule 1.1: No compiler extensions
         rules_checked += 1
-        ext_matches = [(i + 1, l) for i, l in enumerate(code_lines)
-                       if "__attribute__" in l or "__extension__" in l or "__asm__" in l]
+        ext_matches = [(i + 1, ln) for i, ln in enumerate(code_lines)
+                       if "__attribute__" in ln or "__extension__" in ln or "__asm__" in ln]
         if ext_matches:
             for ln, _ in ext_matches:
                 _add_violation("1.1", "required", ln, "Compiler extension detected")
@@ -157,7 +157,7 @@ class MisraCEmitter:
         rules_checked += 1
         # Look for bare hex constants without U suffix (common for bitmasks)
         hex_no_u = re.compile(r'\b0x[0-9a-fA-F]+\b(?!U)')
-        hex_issues = [(i + 1) for i, l in enumerate(code_lines) if hex_no_u.search(l)]
+        hex_issues = [(i + 1) for i, ln in enumerate(code_lines) if hex_no_u.search(ln)]
         if hex_issues:
             _add_warning("7.2", hex_issues[0],
                          f"Hex constant(s) without 'U' suffix on {len(hex_issues)} line(s) (advisory)")
@@ -166,7 +166,7 @@ class MisraCEmitter:
         # Rule 10.1: Implicit float-to-int conversion
         rules_checked += 1
         impl_conv = re.compile(r'\bint\b\s+\w+\s*=\s*[0-9]+\.[0-9]')
-        impl_lines = [(i + 1) for i, l in enumerate(code_lines) if impl_conv.search(l)]
+        impl_lines = [(i + 1) for i, ln in enumerate(code_lines) if impl_conv.search(ln)]
         if impl_lines:
             for ln in impl_lines:
                 _add_violation("10.1", "required", ln, "Implicit float-to-int conversion")
@@ -186,8 +186,8 @@ class MisraCEmitter:
         # Rule 15.5: Single point of exit per function
         rules_checked += 1
         # Simple heuristic: count return statements per function block
-        fn_starts = [i for i, l in enumerate(code_lines)
-                     if re.match(r'^[a-zA-Z_].*\(', l) and not l.strip().startswith(("//", "/*", "#"))]
+        fn_starts = [i for i, ln in enumerate(code_lines)
+                     if re.match(r'^[a-zA-Z_].*\(', ln) and not ln.strip().startswith(("//", "/*", "#"))]
         multi_return_found = False
         for fi in fn_starts:
             depth = 0
@@ -208,8 +208,8 @@ class MisraCEmitter:
         rules_checked += 1
         # Check for calls where the return value is discarded (statement = call;)
         discarded_pat = re.compile(r'^\s+(?!return|if|while|for|switch)\w+\s*\([^)]*\)\s*;')
-        discarded = [(i + 1) for i, l in enumerate(code_lines)
-                     if discarded_pat.match(l) and "timber_log" not in l and "(void)" not in l]
+        discarded = [(i + 1) for i, ln in enumerate(code_lines)
+                     if discarded_pat.match(ln) and "timber_log" not in ln and "(void)" not in ln]
         if discarded:
             _add_warning("17.7", discarded[0],
                          f"Possible ignored return value ({len(discarded)} site(s)) (advisory)")
@@ -231,7 +231,7 @@ class MisraCEmitter:
 
         # Rule 20.9: No <stdio.h> include
         rules_checked += 1
-        stdio_inc = [(i + 1) for i, l in enumerate(code_lines) if re.search(r'#\s*include\s*<stdio\.h>', l)]
+        stdio_inc = [(i + 1) for i, ln in enumerate(code_lines) if re.search(r'#\s*include\s*<stdio\.h>', ln)]
         if stdio_inc:
             _add_violation("20.9", "required", stdio_inc[0], "#include <stdio.h> in production code")
         else:
