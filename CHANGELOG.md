@@ -9,6 +9,26 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Added
+
+- **URDF forward-kinematics frontend** (`timber/frontends/urdf_parser.py`) — `URDFParser` parses URDF XML into a `KinematicsStage` IR; auto-detects base link and end-effector; supports all joint types (`revolute`, `prismatic`, `continuous`, `fixed`)
+- **`JointSpec` IR node** — new dataclass carrying joint name, type, axis, origin (xyz + rpy), parent/child links, and position limits; full JSON serialization round-trip
+- **`KinematicsStage` IR node** — new `PipelineStage` subclass holding a `list[JointSpec]`, `base_link`, `end_effector`, and computed `n_dof`; full JSON serialization round-trip
+- **C99 emitter: kinematics backend** — `C99Emitter.emit()` dispatches `KinematicsStage` to:
+  - `timber_fk(q, T, ctx)` — computes 4×4 row-major homogeneous transform from joint angles; max absolute error vs Python reference < 1 × 10⁻⁷
+  - `timber_infer_single` delegates to `timber_fk` (same ABI as all other Timber stages, 16-element float output)
+  - RPY origin transforms pre-computed at code-gen time as compile-time constants
+  - Rodrigues rotation for revolute/continuous joints, prismatic translation for sliding joints
+  - Helper functions (`rodrigues`, `prismatic`) emitted only when needed — zero unused-function warnings
+  - `TIMBER_N_DOF` constant in header
+- **`timber serve robot.urdf`** — `.urdf` extension is now auto-detected; `timber load` and `timber serve` accept URDF files directly; serve panel shows `N DOF · 16 outputs (4×4 transform)` and pre-filled example curl command with zero-initialized joint angles
+- **49 kinematics tests** (`tests/test_kinematics.py`) covering URDF parsing, IR round-trip, C99 code structure, and numerical FK correctness (compiled C vs Python reference, KUKA iiwa end-to-end)
+
+### Fixed
+
+- **`ml_dtypes` / `onnx` version conflict** — `pyproject.toml` now pins `onnx>=1.17.0` and `ml-dtypes>=0.5.0` in both `full` and `dev` extras; `onnx 1.17+` unconditionally accesses `ml_dtypes.float4_e2m1fn` (added in 0.5.0), which caused `AttributeError` on machines with TensorFlow ≤ 2.16.x holding `ml_dtypes` at 0.3.x
+- **Defensive `@_skip_no_onnx` guards** added to all 24 ONNX-dependent tests in `test_nuclear.py`; in environments with an incompatible `ml_dtypes` the tests now skip with a clear actionable message instead of raising `AttributeError`
+
 ---
 
 ## [0.4.0] — 2026-03-04

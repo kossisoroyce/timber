@@ -840,12 +840,17 @@ def load(source, name, fmt, force):
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
 
+    _is_fk = info.objective == "forward_kinematics"
     click.echo("\nModel loaded successfully:")
     click.echo(f"  Name:      {info.name}")
     click.echo(f"  Format:    {info.format}")
     click.echo(f"  Framework: {info.framework}")
-    click.echo(f"  Trees:     {info.n_trees}")
-    click.echo(f"  Features:  {info.n_features}")
+    if _is_fk:
+        click.echo(f"  DOF:       {info.n_features}")
+        click.echo("  Outputs:   16  (4x4 homogeneous transform)")
+    else:
+        click.echo(f"  Trees:     {info.n_trees}")
+        click.echo(f"  Features:  {info.n_features}")
     click.echo(f"  Objective: {info.objective}")
     click.echo(f"  Compiled:  {'yes' if info.compiled else 'no (gcc not found)'}")
     click.echo(f"  Size:      {_fmt_bytes(info.size_bytes)}")
@@ -1070,13 +1075,17 @@ def serve(source, host, port, name, force):
     endpoint = f"http://{display_host}:{port}"
 
     t = Text()
+    _is_fk = model_info.objective == "forward_kinematics"
     t.append("  Serving    ", style="bold green")
     t.append(f"{model_name}\n", style="bold white")
     t.append("\n  Endpoint   ", style="dim")
     t.append(endpoint, style="bold cyan underline")
     t.append("\n  Framework  ", style="dim")
     t.append(f"{model_info.framework or 'unknown'}", style="white")
-    t.append(f"  ·  {model_info.n_trees} trees  ·  {model_info.n_features} features", style="dim")
+    if _is_fk:
+        t.append(f"  ·  {model_info.n_features} DOF  ·  16 outputs (4×4 transform)", style="dim")
+    else:
+        t.append(f"  ·  {model_info.n_trees} trees  ·  {model_info.n_features} features", style="dim")
     t.append("\n  Objective  ", style="dim")
     t.append(model_info.objective or "unknown", style="white")
     con.print(Panel(t, border_style="green", padding=(0, 1)))
@@ -1090,7 +1099,11 @@ def serve(source, host, port, name, force):
     con.print("  [bold]Example[/bold]")
     con.print(_Text(f"    curl {endpoint}/api/predict \\", style="dim"))
     con.print(_Text( "      -H 'Content-Type: application/json' \\", style="dim"))
-    con.print(_Text(f"      -d '{{\"model\": \"{model_name}\", \"inputs\": [[1.0, 2.0, ...]]}}'", style="dim"))
+    if _is_fk:
+        _example_inputs = ", ".join(["0.0"] * model_info.n_features)
+        con.print(_Text(f"      -d '{{\"model\": \"{model_name}\", \"inputs\": [[{_example_inputs}]]}}'" , style="dim"))
+    else:
+        con.print(_Text(f"      -d '{{\"model\": \"{model_name}\", \"inputs\": [[1.0, 2.0, ...]]}}'" , style="dim"))
     con.print()
     _stop = _Text()
     _stop.append("  Press ", style="dim")

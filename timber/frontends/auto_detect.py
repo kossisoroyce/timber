@@ -8,7 +8,7 @@ from typing import Optional
 
 from timber.ir.model import TimberIR
 
-SUPPORTED_FORMATS = ("xgboost", "lightgbm", "sklearn", "onnx", "catboost")
+SUPPORTED_FORMATS = ("xgboost", "lightgbm", "sklearn", "onnx", "catboost", "urdf")
 
 
 def detect_format(path: str | Path) -> Optional[str]:
@@ -62,6 +62,10 @@ def detect_format(path: str | Path) -> Optional[str]:
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
 
+    # URDF robot description
+    if suffix == ".urdf":
+        return "urdf"
+
     # Fallback: try XGBoost binary format
     if suffix in (".bin", ".ubj", ".xgb"):
         return "xgboost"
@@ -107,5 +111,8 @@ def parse_model(path: str | Path, format_hint: Optional[str] = None) -> TimberIR
     elif fmt == "catboost":
         from timber.frontends.catboost_parser import parse_catboost_json
         return parse_catboost_json(path)
+    elif fmt == "urdf":
+        from timber.frontends.urdf_parser import URDFParser
+        return URDFParser().parse(path)
     else:
         raise ValueError(f"Unsupported format: '{fmt}'. Supported: {', '.join(SUPPORTED_FORMATS)}")

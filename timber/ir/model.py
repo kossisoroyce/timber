@@ -254,6 +254,46 @@ class NormalizerStage(PipelineStage):
 
 
 @dataclass
+class JointSpec:
+    """A single joint in a URDF kinematic chain."""
+    name: str
+    joint_type: str           # revolute | prismatic | fixed | continuous
+    axis: list[float]         # unit rotation/translation axis [x, y, z]
+    origin_xyz: list[float]   # translation from parent frame [x, y, z]
+    origin_rpy: list[float]   # rotation from parent frame [roll, pitch, yaw]
+    parent: str
+    child: str
+    limit_lower: float = -3.14159265
+    limit_upper: float = 3.14159265
+
+
+@dataclass
+class KinematicsStage(PipelineStage):
+    """Forward kinematics stage: joint angles -> 4x4 homogeneous transform.
+
+    The output is a 16-element flat array (row-major 4x4 matrix) giving
+    the end-effector pose in the base frame.
+
+    Active joints (revolute, prismatic, continuous) consume one entry from
+    the input joint_angles vector in kinematic-chain order.
+    """
+    joints: list[JointSpec] = field(default_factory=list)
+    base_link: str = "base_link"
+    end_effector: str = "end_effector"
+
+    def __post_init__(self):
+        self.stage_type = "kinematics"
+
+    @property
+    def n_dof(self) -> int:
+        """Number of actuated (non-fixed) joints."""
+        return sum(
+            1 for j in self.joints
+            if j.joint_type in ("revolute", "prismatic", "continuous")
+        )
+
+
+@dataclass
 class AggregatorStage(PipelineStage):
     """Combines multiple stage outputs (voting, stacking)."""
     method: str = "average"  # average, vote, stack
@@ -440,10 +480,42 @@ def _stage_to_dict(s: PipelineStage) -> dict[str, Any]:
         d["post_transform"] = s.post_transform
     elif isinstance(s, NormalizerStage):
         d["norm"] = s.norm
+    elif isinstance(s, KinematicsStage):
+        d["joints"] = [_joint_to_dict(j) for j in s.joints]
+        d["base_link"] = s.base_link
+        d["end_effector"] = s.end_effector
     elif isinstance(s, AggregatorStage):
         d["method"] = s.method
         d["source_stages"] = s.source_stages
     return d
+
+
+def _joint_to_dict(j: JointSpec) -> dict[str, Any]:
+    return {
+        "name": j.name,
+        "joint_type": j.joint_type,
+        "axis": j.axis,
+        "origin_xyz": j.origin_xyz,
+        "origin_rpy": j.origin_rpy,
+        "parent": j.parent,
+        "child": j.child,
+        "limit_lower": j.limit_lower,
+        "limit_upper": j.limit_upper,
+    }
+
+
+def _joint_from_dict(d: dict[str, Any]) -> JointSpec:
+    return JointSpec(
+        name=d["name"],
+        joint_type=d["joint_type"],
+        axis=d.get("axis", [0.0, 0.0, 1.0]),
+        origin_xyz=d.get("origin_xyz", [0.0, 0.0, 0.0]),
+        origin_rpy=d.get("origin_rpy", [0.0, 0.0, 0.0]),
+        parent=d["parent"],
+        child=d["child"],
+        limit_lower=d.get("limit_lower", -3.14159265),
+        limit_upper=d.get("limit_upper", 3.14159265),
+    )
 
 
 def _stage_from_dict(d: dict[str, Any]) -> PipelineStage:
@@ -513,6 +585,14 @@ def _stage_from_dict(d: dict[str, Any]) -> PipelineStage:
             n_classes=d.get("n_classes", 2),
             objective=Objective(d.get("objective", "binary:logistic")),
             post_transform=d.get("post_transform", "none"),
+        )
+    if st == "kinematics":
+        return KinematicsStage(
+            stage_name=name,
+            stage_type=st,
+            joints=[_joint_from_dict(j) for j in d.get("joints", [])],
+            base_link=d.get("base_link", "base_link"),
+            end_effector=d.get("end_effector", "end_effector"),
         )
     if st == "normalizer":
         return NormalizerStage(

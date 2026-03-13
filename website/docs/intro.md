@@ -8,7 +8,7 @@ title: Introduction
 
 **Ollama for classical ML models.** Compile and serve tree-based models at native speed.
 
-Timber is an ahead-of-time (AOT) compiler that transforms trained machine learning models — XGBoost, LightGBM, scikit-learn, CatBoost, and ONNX — into optimized, self-contained C99 inference code. No Python runtime at inference time. No dynamic allocation. No recursion. Just fast, auditable, portable code.
+Timber is an ahead-of-time (AOT) compiler that transforms trained machine learning models — XGBoost, LightGBM, scikit-learn, CatBoost, and ONNX — as well as **URDF robot descriptions** — into optimized, self-contained C99 inference code. No Python runtime at inference time. No dynamic allocation. No recursion. Just fast, auditable, portable code.
 
 ## The Problem
 
@@ -62,6 +62,7 @@ curl http://localhost:11434/api/predict \
 - **scikit-learn** — Pickle files (GradientBoosting, RandomForest, Pipeline)
 - **CatBoost** — JSON exports (oblivious trees)
 - **ONNX** — TreeEnsemble, LinearClassifier/Regressor, SVMClassifier/Regressor, Normalizer, Scaler
+- **URDF** — Robot description files → forward kinematics; outputs 4×4 homogeneous transform; inputs are joint angles
 
 ### Optimization Passes
 1. Dead leaf elimination
@@ -84,7 +85,7 @@ curl http://localhost:11434/api/predict \
 - **Ensemble composition** (voting, stacking)
 - Multi-worker FastAPI server with `GET /api/metrics` (P50/P95/P99/P999 rolling window)
 - Thread-safe, zero-allocation generated code
-- 436-test nuclear-grade test suite
+- 313-test nuclear-grade test suite (264 ML + 49 kinematics)
 
 ## Next Steps
 

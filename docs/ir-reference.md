@@ -76,7 +76,7 @@ class Metadata:
 
 | Field | Description |
 |-------|-------------|
-| `source_framework` | `"xgboost"`, `"lightgbm"`, `"sklearn"`, `"catboost"`, `"onnx"` |
+| `source_framework` | `"xgboost"`, `"lightgbm"`, `"sklearn"`, `"catboost"`, `"onnx"`, `"urdf"` |
 | `source_framework_version` | e.g. `[2, 1, 0]` |
 | `source_artifact_hash` | SHA-256 hex digest of the source file |
 | `feature_names` | Feature names in index order |
@@ -107,6 +107,7 @@ All concrete stages inherit from this. `stage_type` is set by `__post_init__`.
 | `"svm"` | `SVMStage` | Support vector machine (RBF or linear kernel) |
 | `"normalizer"` | `NormalizerStage` | Row-wise L1 / L2 / Max normalization |
 | `"aggregator"` | `AggregatorStage` | Voting / stacking aggregation |
+| `"kinematics"` | `KinematicsStage` | Robot forward kinematics (URDF source) |
 
 ---
 
@@ -382,6 +383,63 @@ class ImputerStrategy(str, Enum):
     MEDIAN   = "median"
     CONSTANT = "constant"
 ```
+
+---
+
+## KinematicsStage
+
+Represents a robot's forward-kinematics chain parsed from a URDF file.
+Produced by `URDFParser` from `.urdf` XML.
+
+```python
+@dataclass
+class KinematicsStage(PipelineStage):
+    joints: list[JointSpec]
+    base_link: str
+    end_effector: str
+```
+
+| Field | Description |
+|-------|-------------|
+| `joints` | Ordered list of `JointSpec` objects (active DOF joints only; `fixed` joints included for transform chaining) |
+| `base_link` | Name of the root link in the kinematic chain |
+| `end_effector` | Name of the terminal link |
+
+### Properties
+
+```python
+kin.n_dof  # int — number of actuated (non-fixed) joints
+```
+
+**C99 output:** `timber_fk(q, T, ctx)` fills a 16-element row-major `float[16]` buffer with the 4×4 homogeneous transform from base to end-effector. `timber_infer_single` delegates to `timber_fk` (same ABI as all other stages).
+
+---
+
+## JointSpec
+
+One joint in a kinematic chain.
+
+```python
+@dataclass
+class JointSpec:
+    name: str
+    joint_type: str          # "revolute" | "prismatic" | "continuous" | "fixed"
+    axis: list[float]        # unit vector [x, y, z]
+    origin_xyz: list[float]  # translation [x, y, z] from parent frame
+    origin_rpy: list[float]  # rotation [r, p, y] from parent frame (radians)
+    parent: str              # parent link name
+    child: str               # child link name
+    limit_lower: float       # lower position limit (rad or m)
+    limit_upper: float       # upper position limit (rad or m)
+```
+
+| Field | Description |
+|-------|-------------|
+| `joint_type` | `"revolute"` / `"continuous"` — Rodrigues rotation about `axis`; `"prismatic"` — translation along `axis`; `"fixed"` — constant transform (no DOF) |
+| `axis` | Normalized rotation / translation axis in the joint's local frame |
+| `origin_xyz` | Position of the joint frame origin relative to the parent link frame |
+| `origin_rpy` | Orientation of the joint frame expressed as roll-pitch-yaw (intrinsic XYZ) |
+| `limit_lower` / `limit_upper` | Position limits; `0.0` / `0.0` for `continuous` and `fixed` joints |
 
 ---
 

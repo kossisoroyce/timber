@@ -10,12 +10,12 @@ Timber is a classical compiler that treats trained ML models as program specific
 ## The Compiler Pipeline
 
 ```
-Model Artifact (.json, .pkl, .txt, .onnx)
+Model Artifact (.json, .pkl, .txt, .onnx, .urdf)
     │
     ▼
 ┌──────────────────┐
 │   Front-End      │  Format-specific parsers
-│   (5 parsers)    │  → Framework-agnostic IR
+│   (6 parsers)    │  → Framework-agnostic IR
 └────────┬─────────┘
          │
          ▼
@@ -55,6 +55,7 @@ Each supported framework has a dedicated parser that converts its native format 
 | scikit-learn | `sklearn_parser` | Pickle | Supports Pipelines with StandardScaler |
 | CatBoost | `catboost_parser` | JSON export | Expands oblivious (symmetric) trees |
 | ONNX | `onnx_parser` | Protobuf | TreeEnsemble, LinearClassifier/Regressor, SVMClassifier/Regressor, Normalizer, Scaler |
+| URDF | `urdf_parser` | XML | Robot description → `KinematicsStage` IR; auto-detects base link and end-effector |
 
 **Auto-detection** inspects file extension and content to select the right parser automatically.
 
@@ -81,6 +82,20 @@ Absorbs a preceding `ScalerStage` into tree thresholds: `θ' = θ × σ + μ`. E
 Analyzes tree structure to identify SIMD batching opportunities — depth profiles, feature access patterns, structurally identical tree groups. Produces `VectorizationHint` annotations. **Effect:** Guides future SIMD code generation.
 
 Each pass produces an **audit log** documenting what changed and timing.
+
+## Kinematics Pipeline (URDF)
+
+For `.urdf` inputs the optimizer is bypassed — FK has no tree passes to apply. The emitter path is:
+
+```
+URDF XML → URDFParser → KinematicsStage IR → C99Emitter → timber_fk()
+```
+
+- **Input:** `float q[n_dof]` — joint angles in radians (or meters for prismatic joints)
+- **Output:** `float T[16]` — row-major 4×4 homogeneous transform (base → end-effector)
+- **Implementation:** Rodrigues rotation for revolute/continuous joints; prismatic translation for sliding joints; RPY origin transforms pre-baked as compile-time constants
+- **ABI:** identical to all other Timber stages — `timber_infer_single(q, T, ctx)` delegates to `timber_fk`
+- **Accuracy:** max absolute error vs Python reference < 1 × 10⁻⁷ (verified on KUKA iiwa)
 
 ## Phase 3: Code Generation
 

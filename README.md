@@ -23,7 +23,7 @@
 
 ---
 
-Timber takes a trained ML model — XGBoost, LightGBM, scikit-learn, CatBoost, or ONNX (tree ensembles, linear models, SVMs) — runs it through a multi-pass optimizing compiler, and emits a **self-contained C99 inference artifact** with zero runtime dependencies. A built-in HTTP server (Ollama-compatible API) lets you serve any model — local file or remote URL — in one command.
+Timber takes a trained ML model — XGBoost, LightGBM, scikit-learn, CatBoost, ONNX (tree ensembles, linear models, SVMs), or a **URDF robot description** — runs it through a multi-pass optimizing compiler, and emits a **self-contained C99 inference artifact** with zero runtime dependencies. A built-in HTTP server (Ollama-compatible API) lets you serve any model — local file or remote URL — in one command.
 
 > **~2 µs single-sample inference · ~336× faster than Python XGBoost · ~48 KB artifact · zero runtime dependencies**
 
@@ -172,6 +172,22 @@ curl -s http://localhost:11434/api/predict \
 
 **That's it.** No model server configuration, no Python runtime in the hot path.
 
+**Or serve a robot's forward kinematics from a URDF file:**
+
+```bash
+timber serve robot.urdf
+```
+
+```bash
+curl -s http://localhost:11434/api/predict \
+  -H "Content-Type: application/json" \
+  -d '{"model": "robot", "inputs": [[0.1, 0.2, 0.3, -0.4, 0.5, -0.6, 0.7]]}'
+```
+
+```json
+{"model": "robot", "outputs": [[0.082, -0.982, 0.170, 0.310, 0.959, 0.031, -0.283, 0.053, 0.272, 0.187, 0.944, 1.180, 0.0, 0.0, 0.0, 1.0]], "latency_us": 65.0}
+```
+
 ---
 
 ## Supported Formats
@@ -183,6 +199,7 @@ curl -s http://localhost:11434/api/predict \
 | scikit-learn | `.pkl`, `.pickle` | GradientBoostingClassifier/Regressor, RandomForest, ExtraTrees, DecisionTree, Pipeline |
 | ONNX | `.onnx` | `TreeEnsembleClassifier/Regressor`, `LinearClassifier/Regressor`, `SVMClassifier/Regressor`, `Normalizer`, `Scaler` |
 | CatBoost | `.json` | JSON export (`save_model(..., format='json')`) |
+| URDF | `.urdf` | Robot description → forward kinematics; outputs 4×4 homogeneous transform; inputs are joint angles |
 
 ---
 

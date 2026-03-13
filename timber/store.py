@@ -110,6 +110,7 @@ class ModelStore:
         """
         from timber.codegen.c99 import C99Emitter
         from timber.frontends.auto_detect import detect_format, parse_model
+        from timber.ir.model import KinematicsStage
         from timber.optimizer.pipeline import OptimizerPipeline
 
         cb = callbacks or LoadCallbacks()
@@ -132,19 +133,40 @@ class ModelStore:
         # Parse
         cb.on_parse_start()
         ir = parse_model(str(source_path), format_hint=fmt)
-        ensemble = ir.get_tree_ensemble()
-        cb.on_parse_done(
-            ensemble.n_trees if ensemble else 0,
-            ensemble.n_features if ensemble else 0,
-            ensemble.objective.value if ensemble else "unknown",
-        )
 
-        # Optimize
-        cb.on_optimize_start()
-        opt_result = OptimizerPipeline().run(ir)
-        ir = opt_result.ir
-        ensemble = ir.get_tree_ensemble()
-        cb.on_optimize_done(opt_result.passes)
+        # Detect kinematics vs ML model and handle accordingly
+        kin_stage = next((s for s in ir.pipeline if isinstance(s, KinematicsStage)), None)
+
+        if kin_stage is not None:
+            # Kinematics model: skip optimizer (FK has no tree passes to apply)
+            cb.on_parse_done(0, kin_stage.n_dof, "forward_kinematics")
+            cb.on_optimize_start()
+            cb.on_optimize_done([])
+            n_features = kin_stage.n_dof
+            n_outputs = 16
+            n_trees = 0
+            objective = "forward_kinematics"
+        else:
+            ensemble = ir.get_tree_ensemble()
+            cb.on_parse_done(
+                ensemble.n_trees if ensemble else 0,
+                ensemble.n_features if ensemble else 0,
+                ensemble.objective.value if ensemble else "unknown",
+            )
+            # Optimize
+            cb.on_optimize_start()
+            opt_result = OptimizerPipeline().run(ir)
+            ir = opt_result.ir
+            ensemble = ir.get_tree_ensemble()
+            cb.on_optimize_done(opt_result.passes)
+
+            if ensemble is None:
+                raise ValueError("Model produced no tree ensemble after optimization.")
+
+            n_outputs = 1 if ensemble.n_classes <= 2 else ensemble.n_classes
+            n_features = ensemble.n_features
+            n_trees = ensemble.n_trees
+            objective = ensemble.objective.value
 
         # Create model directory
         model_dir = self.models_dir / name
@@ -168,19 +190,14 @@ class ModelStore:
         lib_path = self._compile_shared_lib(compiled_dir, lib_dir)
         cb.on_compile_done(lib_path)
 
-        if ensemble is None:
-            raise ValueError("Model produced no tree ensemble after optimization.")
-
-        n_outputs = 1 if ensemble.n_classes <= 2 else ensemble.n_classes
-
         info = ModelInfo(
             name=name,
             source_path=str(source_path),
             format=fmt,
-            n_trees=ensemble.n_trees,
-            n_features=ensemble.n_features,
+            n_trees=n_trees,
+            n_features=n_features,
             n_outputs=n_outputs,
-            objective=ensemble.objective.value,
+            objective=objective,
             framework=ir.metadata.source_framework,
             loaded_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             size_bytes=sum(f.stat().st_size for f in compiled_dir.rglob("*") if f.is_file()),

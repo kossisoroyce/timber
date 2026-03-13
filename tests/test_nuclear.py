@@ -13,6 +13,18 @@ from sklearn.pipeline import Pipeline as SkPipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
+# ── onnx availability guard ──────────────────────────────────────────────────
+try:
+    import onnx as _onnx_probe  # noqa: F401
+    _onnx_available = True
+except Exception:
+    _onnx_available = False
+
+_skip_no_onnx = pytest.mark.skipif(
+    not _onnx_available,
+    reason="onnx not importable (ml_dtypes version conflict — run: pip install 'ml-dtypes>=0.5.0')",
+)
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _bc(n=10):  X,y=load_breast_cancer(return_X_y=True); return X[:,:n].astype(np.float32),y
@@ -242,6 +254,7 @@ class TestSklearnParser:
 # C. ONNX PARSER
 # ═══════════════════════════════════════════════════════════════════════════
 
+@_skip_no_onnx
 class TestONNXParser:
     def _binary_path(self,n=10):
         from sklearn.linear_model import LogisticRegression
@@ -408,6 +421,7 @@ class TestNumericAccuracy:
         np.testing.assert_allclose(c_out.ravel().astype(np.float64), py_proba, atol=0.10,
                                    err_msg="C99 binary output diverges from Python sigmoid(log-odds)")
 
+    @_skip_no_onnx
     def test_c99_linear_sigmoid_range(self,tmp_path):
         from sklearn.linear_model import LogisticRegression
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -423,6 +437,7 @@ class TestNumericAccuracy:
             assert np.all(res>=0.0) and np.all(res<=1.0),f"sigmoid output out of [0,1]: min={res.min():.3f} max={res.max():.3f}"
         finally: os.unlink(p)
 
+    @_skip_no_onnx
     def test_c99_multiclass_softmax_sums_to_one(self,tmp_path):
         from sklearn.linear_model import LogisticRegression
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -438,6 +453,7 @@ class TestNumericAccuracy:
             np.testing.assert_allclose(sums,1.0,atol=0.02,err_msg=f"softmax sums: {sums}")
         finally: os.unlink(p)
 
+    @_skip_no_onnx
     def test_c99_linear_regressor_unbounded(self,tmp_path):
         from sklearn.linear_model import LinearRegression
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -454,6 +470,7 @@ class TestNumericAccuracy:
             assert np.any(res>1.1) or np.any(res<0.0),"Regression looks clipped to [0,1]"
         finally: os.unlink(p)
 
+    @_skip_no_onnx
     def test_c99_svm_rbf_finite(self,tmp_path):
         from sklearn.svm import SVC
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -747,6 +764,7 @@ class TestC99Emitter:
         with pytest.raises(ValueError,match="No supported primary stage"):
             C99Emitter().emit(TimberIR())
 
+    @_skip_no_onnx
     def test_linear_binary_compiles(self,tmp_path):
         from sklearn.linear_model import LogisticRegression
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -757,6 +775,7 @@ class TestC99Emitter:
             assert _compile_so(tmp_path) is not None
         finally: os.unlink(p)
 
+    @_skip_no_onnx
     def test_svm_rbf_compiles(self,tmp_path):
         from sklearn.svm import SVC
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -894,6 +913,7 @@ class TestLLVMIR:
         ir,_,_=_xgb_ir(10,3); out=LLVMIREmitter("x86_64").emit(ir)
         assert "traverse_tree_0" in out.model_ll
 
+    @_skip_no_onnx
     def test_linear_has_weights_and_define(self):
         from sklearn.linear_model import LogisticRegression
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -904,6 +924,7 @@ class TestLLVMIR:
             assert "timber_weights" in out.model_ll and "define" in out.model_ll
         finally: os.unlink(p)
 
+    @_skip_no_onnx
     def test_svm_has_exp_intrinsic(self):
         from sklearn.svm import SVC
         from timber.frontends.onnx_parser import parse_onnx_model
@@ -1073,6 +1094,7 @@ class TestEndToEnd:
         out=C99Emitter().emit(ir); out.write(tmp_path)
         assert _compile_so(tmp_path) is not None
 
+    @_skip_no_onnx
     def test_onnx_linear_parse_misra_compile(self,tmp_path):
         from sklearn.linear_model import LogisticRegression
         from timber.frontends.onnx_parser import parse_onnx_model
