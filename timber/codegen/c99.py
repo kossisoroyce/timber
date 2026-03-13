@@ -18,8 +18,8 @@ from typing import Optional
 from timber.ir.model import (
     GPRStage,
     IsolationForestStage,
-    KNNStage,
     KinematicsStage,
+    KNNStage,
     LinearStage,
     NaiveBayesStage,
     Objective,
@@ -886,7 +886,7 @@ class C99Emitter:
         lines += self._common_runtime_fns()
         # Generic tree traversal — leaf values are pre-computed path-length contributions
         lines += [
-            f"static double iforest_traverse(",
+            "static double iforest_traverse(",
             f"    const {ft}*    x,",
             "    const int32_t* feat,",
             "    const double*  thr,",
@@ -998,7 +998,7 @@ class C99Emitter:
             f"    double scores[{nc}];",
             "    int c, f;",
             f"    for (c = 0; c < {nc}; c++) {{",
-            f"        scores[c] = (double)TIMBER_NB_LOG_PRIOR[c];",
+            "        scores[c] = (double)TIMBER_NB_LOG_PRIOR[c];",
             f"        for (f = 0; f < {nf}; f++) {{",
             f"            double d = (double)inputs[f] - (double)TIMBER_NB_THETA[c * {nf} + f];",
             f"            scores[c] += (double)TIMBER_NB_LOGVC[c * {nf} + f]",
@@ -1189,7 +1189,7 @@ class C99Emitter:
             f"    for (i = 0; i < {nt}; i++) {{",
             f"        double d = knn_dist(inputs, TIMBER_KNN_X + i * {nf}, {nf});",
             "        /* insert into top-k if closer than current worst */",
-            f"        int worst = 0;",
+            "        int worst = 0;",
             f"        for (j = 1; j < {k}; j++) if (kd[j] > kd[worst]) worst = j;",
             "        if (d < kd[worst]) { kd[worst] = d; ki[worst] = i; }",
             "    }",
@@ -1202,7 +1202,7 @@ class C99Emitter:
                 f"    for (i = 0; i < {nc}; i++) votes[i] = 0;",
                 f"    for (i = 0; i < {k}; i++) {{",
                 "        if (ki[i] >= 0) {",
-                f"            int cls = (int)TIMBER_KNN_Y[ki[i]];",
+                "            int cls = (int)TIMBER_KNN_Y[ki[i]];",
                 f"            if (cls >= 0 && cls < {nc}) votes[cls]++;",
                 "        }",
                 "    }",

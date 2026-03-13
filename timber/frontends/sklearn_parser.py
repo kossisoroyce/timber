@@ -13,11 +13,10 @@ Requires scikit-learn to be installed (not a hard Timber dependency).
 from __future__ import annotations
 
 import hashlib
+import math
 import pickle
 from pathlib import Path
 from typing import Any, Optional
-
-import math
 
 import numpy as np
 
@@ -31,9 +30,9 @@ from timber.ir.model import (
     NaiveBayesStage,
     Objective,
     PipelineStage,
-    SVMStage,
     ScalerStage,
     Schema,
+    SVMStage,
     TimberIR,
     Tree,
     TreeEnsembleStage,
