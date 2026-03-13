@@ -108,6 +108,10 @@ All concrete stages inherit from this. `stage_type` is set by `__post_init__`.
 | `"normalizer"` | `NormalizerStage` | Row-wise L1 / L2 / Max normalization |
 | `"aggregator"` | `AggregatorStage` | Voting / stacking aggregation |
 | `"kinematics"` | `KinematicsStage` | Robot forward kinematics (URDF source) |
+| `"isolation_forest"` | `IsolationForestStage` | Isolation Forest anomaly detection |
+| `"naive_bayes"` | `NaiveBayesStage` | Gaussian Naive Bayes classifier |
+| `"gpr"` | `GPRStage` | Gaussian Process Regressor (RBF kernel) |
+| `"knn"` | `KNNStage` | k-Nearest Neighbours classifier / regressor |
 
 ---
 
@@ -440,6 +444,110 @@ class JointSpec:
 | `origin_xyz` | Position of the joint frame origin relative to the parent link frame |
 | `origin_rpy` | Orientation of the joint frame expressed as roll-pitch-yaw (intrinsic XYZ) |
 | `limit_lower` / `limit_upper` | Position limits; `0.0` / `0.0` for `continuous` and `fixed` joints |
+
+---
+
+## IsolationForestStage
+
+Anomaly detection via average isolation path length. Output is
+`−anomaly_score − offset` (positive → inlier, negative → outlier), matching
+sklearn's `decision_function` sign convention.
+
+```python
+@dataclass
+class IsolationForestStage(PipelineStage):
+    trees: list[Tree]
+    n_features: int
+    max_samples: int    # training subsample size used for c(n) normalisation
+    offset: float       # sklearn offset_ (typically negative)
+```
+
+| Field | Description |
+|-------|-------------|
+| `trees` | Flat-node isolation trees; leaf `leaf_value` = `depth + c(n_node_samples)` |
+| `max_samples` | Size of the training subsample per tree (used to compute `c_max`) |
+| `offset` | Decision threshold offset; added to `−anomaly_score` to form decision value |
+
+**C99 output formula:** `outputs[0] = (float)(−exp2(−mean_path / c(max_samples)) − offset)`
+
+---
+
+## NaiveBayesStage
+
+Gaussian Naive Bayes classifier. All log-arithmetic is pre-computed at
+parse time; C99 inference performs only multiply-accumulate and `exp()` for softmax.
+
+```python
+@dataclass
+class NaiveBayesStage(PipelineStage):
+    log_prior: list[float]          # [n_classes]
+    theta: list[list[float]]        # [n_classes, n_features]  mean per class/feature
+    log_var_const: list[list[float]]# [n_classes, n_features]  −0.5·log(2π·var)
+    inv_2var: list[list[float]]     # [n_classes, n_features]  1/(2·var)
+    n_classes: int
+    n_features: int
+```
+
+**C99 output formula:** `outputs[c] = softmax(log_prior[c] + Σ_f (log_var_const[c,f] − inv_2var[c,f]·(x[f]−theta[c,f])²))`
+
+---
+
+## GPRStage
+
+Gaussian Process Regressor with RBF kernel. Prediction is a weighted sum of
+kernel evaluations against the training set.
+
+```python
+@dataclass
+class GPRStage(PipelineStage):
+    X_train: list[list[float]]  # [n_train, n_features]
+    alpha: list[float]          # [n_train]  K⁻¹(y − y_mean)
+    length_scale: float
+    amplitude: float
+    y_train_mean: float         # target normalisation mean
+    y_train_std: float          # target normalisation std
+    n_features: int
+```
+
+| Field | Description |
+|-------|-------------|
+| `alpha` | Dual coefficients from `GaussianProcessRegressor.alpha_` |
+| `length_scale` | RBF kernel length scale (extracted from fitted kernel tree) |
+| `amplitude` | RBF amplitude (square-root of `ConstantKernel.constant_value`) |
+| `y_train_mean` / `y_train_std` | Used when `normalize_y=True` |
+
+**C99 output formula:** `outputs[0] = (float)((Σ_i amp²·exp(−inv2ls²·‖x−X_train[i]‖²)·alpha[i])·y_std + y_mean)`
+
+---
+
+## KNNStage
+
+k-Nearest Neighbours lookup table — stores the full training set and labels.
+
+```python
+@dataclass
+class KNNStage(PipelineStage):
+    X_train: list[list[float]]  # [n_train, n_features]
+    y_train: list[list[float]]  # [n_train, n_outputs]
+    k: int
+    metric: str          # "euclidean" | "manhattan"
+    task_type: str       # "classifier" | "regressor"
+    n_classes: int       # 0 for regressors
+    n_features: int
+    n_outputs: int
+```
+
+**Classifier C99 output:** majority vote → `outputs[0] = (float)winning_class_index`  
+**Regressor C99 output:** mean of k-nearest labels per output dimension
+
+---
+
+## SVMStage (`is_one_class`)
+
+`SVMStage` gained an `is_one_class: bool` field for `sklearn.svm.OneClassSVM`.
+When `True`, `n_classes = 1` and `rho[0]` stores `intercept_[0]` directly
+(not negated) so the C99 formula `decision = rho[0] + Σ(dual_coef·K)` matches
+sklearn's `decision_function`.
 
 ---
 

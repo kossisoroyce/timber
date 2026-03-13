@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "timber-compiler"
-version = "0.4.0"
-description = "Classical ML Inference Compiler — compiles XGBoost, LightGBM, sklearn, CatBoost, and ONNX models to optimized C99 / LLVM IR / WASM inference artifacts"
+version = "0.5.0"
+description = "Classical ML Inference Compiler — compiles XGBoost, LightGBM, sklearn, CatBoost, and ONNX models to optimized C99 / LLVM IR / WASM inference artifacts. Supports tree ensembles, SVMs, Naive Bayes, GPR, k-NN, Isolation Forest, and robot forward kinematics."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Kossiso Royce", email = "kossiso@electricsheep.africa"},
 ]
-keywords = ["ml", "compiler", "inference", "xgboost", "lightgbm", "sklearn", "onnx", "llvm", "embedded", "misra", "differential-privacy", "c99", "wasm"]
+keywords = ["ml", "compiler", "inference", "xgboost", "lightgbm", "sklearn", "onnx", "llvm", "embedded", "misra", "differential-privacy", "c99", "wasm", "isolation-forest", "gaussian-process", "knn", "naive-bayes", "anomaly-detection", "urdf", "robotics"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

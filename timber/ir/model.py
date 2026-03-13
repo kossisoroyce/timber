@@ -235,6 +235,7 @@ class SVMStage(PipelineStage):
     n_classes: int = 2
     objective: Objective = Objective.BINARY_CLASSIFICATION
     post_transform: str = "none"  # none | logistic | softmax | probit
+    is_one_class: bool = False    # True for sklearn OneClassSVM
 
     def __post_init__(self):
         self.stage_type = "svm"
@@ -291,6 +292,112 @@ class KinematicsStage(PipelineStage):
             1 for j in self.joints
             if j.joint_type in ("revolute", "prismatic", "continuous")
         )
+
+
+def _c_factor(n: int) -> float:
+    """Expected path length of an unsuccessful BST search — isolation forest normalization."""
+    import math
+    if n <= 1:
+        return 1.0
+    if n == 2:
+        return 2.0
+    return 2.0 * (math.log(n - 1) + 0.5772156649) - 2.0 * (n - 1) / n
+
+
+@dataclass
+class IsolationForestStage(PipelineStage):
+    """Isolation Forest anomaly detection via average path-length scoring.
+
+    Leaf values store the pre-computed path-length contribution
+    (traversal depth + c(n_node_samples)) so C99 needs no log() at runtime.
+
+    Anomaly score = 2^(-mean_path / c(max_samples)).
+    Decision function = -anomaly_score - offset  (positive → inlier).
+    """
+    trees: list[Tree] = field(default_factory=list)
+    n_features: int = 0
+    max_samples: int = 256
+    offset: float = 0.0
+
+    def __post_init__(self):
+        self.stage_type = "isolation_forest"
+
+    @property
+    def n_trees(self) -> int:
+        return len(self.trees)
+
+    @property
+    def c_factor(self) -> float:
+        return _c_factor(self.max_samples)
+
+
+@dataclass
+class NaiveBayesStage(PipelineStage):
+    """Gaussian Naive Bayes classifier.
+
+    Stores per-class log-priors, per-class/feature means (theta),
+    and pre-computed log-variance constants so C99 needs no log() at runtime.
+
+    log_p(x|c) = sum_f [ log_var_const[c,f] - inv_2var[c,f] * (x[f]-theta[c,f])^2 ]
+    posterior[c] = log_prior[c] + log_p(x|c)
+    output = softmax(posterior)
+    """
+    log_prior: list[float] = field(default_factory=list)       # [n_classes]
+    theta: list[list[float]] = field(default_factory=list)     # [n_classes, n_features]
+    log_var_const: list[list[float]] = field(default_factory=list)  # -0.5*log(2π*var) [n_classes, n_features]
+    inv_2var: list[list[float]] = field(default_factory=list)  # 1/(2*var) [n_classes, n_features]
+    n_classes: int = 2
+    n_features: int = 0
+
+    def __post_init__(self):
+        self.stage_type = "naive_bayes"
+
+
+@dataclass
+class GPRStage(PipelineStage):
+    """Gaussian Process Regressor (RBF kernel).
+
+    Prediction: y = K_star @ alpha + y_mean
+    K_star[i] = amplitude^2 * exp(-||x - X_train[i]||^2 / (2*length_scale^2))
+    """
+    X_train: list[list[float]] = field(default_factory=list)  # [n_train, n_features]
+    alpha: list[float] = field(default_factory=list)          # [n_train] = K_inv @ y
+    length_scale: float = 1.0
+    amplitude: float = 1.0
+    y_train_mean: float = 0.0
+    y_train_std: float = 1.0
+    n_features: int = 0
+
+    def __post_init__(self):
+        self.stage_type = "gpr"
+
+    @property
+    def n_train(self) -> int:
+        return len(self.X_train)
+
+
+@dataclass
+class KNNStage(PipelineStage):
+    """k-Nearest Neighbours classifier or regressor (lookup table).
+
+    At inference: find k training points nearest by metric, then
+    vote (classifier) or average (regressor) their labels.
+    """
+    X_train: list[list[float]] = field(default_factory=list)  # [n_train, n_features]
+    y_train: list[list[float]] = field(default_factory=list)  # [n_train, n_outputs]
+    k: int = 5
+    metric: str = "euclidean"   # euclidean | manhattan
+    task_type: str = "classifier"  # classifier | regressor
+    n_classes: int = 2
+    n_features: int = 0
+    n_outputs: int = 1
+
+    def __post_init__(self):
+        self.stage_type = "knn"
+
+    @property
+    def n_train(self) -> int:
+        return len(self.X_train)
 
 
 @dataclass
@@ -478,6 +585,36 @@ def _stage_to_dict(s: PipelineStage) -> dict[str, Any]:
         d["n_classes"] = s.n_classes
         d["objective"] = s.objective.value
         d["post_transform"] = s.post_transform
+        d["is_one_class"] = s.is_one_class
+    elif isinstance(s, IsolationForestStage):
+        d["trees"] = [_tree_to_dict(t) for t in s.trees]
+        d["n_features"] = s.n_features
+        d["max_samples"] = s.max_samples
+        d["offset"] = s.offset
+    elif isinstance(s, NaiveBayesStage):
+        d["log_prior"] = s.log_prior
+        d["theta"] = s.theta
+        d["log_var_const"] = s.log_var_const
+        d["inv_2var"] = s.inv_2var
+        d["n_classes"] = s.n_classes
+        d["n_features"] = s.n_features
+    elif isinstance(s, GPRStage):
+        d["X_train"] = s.X_train
+        d["alpha"] = s.alpha
+        d["length_scale"] = s.length_scale
+        d["amplitude"] = s.amplitude
+        d["y_train_mean"] = s.y_train_mean
+        d["y_train_std"] = s.y_train_std
+        d["n_features"] = s.n_features
+    elif isinstance(s, KNNStage):
+        d["X_train"] = s.X_train
+        d["y_train"] = s.y_train
+        d["k"] = s.k
+        d["metric"] = s.metric
+        d["task_type"] = s.task_type
+        d["n_classes"] = s.n_classes
+        d["n_features"] = s.n_features
+        d["n_outputs"] = s.n_outputs
     elif isinstance(s, NormalizerStage):
         d["norm"] = s.norm
     elif isinstance(s, KinematicsStage):
@@ -585,6 +722,52 @@ def _stage_from_dict(d: dict[str, Any]) -> PipelineStage:
             n_classes=d.get("n_classes", 2),
             objective=Objective(d.get("objective", "binary:logistic")),
             post_transform=d.get("post_transform", "none"),
+            is_one_class=d.get("is_one_class", False),
+        )
+    if st == "isolation_forest":
+        return IsolationForestStage(
+            stage_name=name,
+            stage_type=st,
+            trees=[_tree_from_dict(t) for t in d.get("trees", [])],
+            n_features=d.get("n_features", 0),
+            max_samples=d.get("max_samples", 256),
+            offset=d.get("offset", 0.0),
+        )
+    if st == "naive_bayes":
+        return NaiveBayesStage(
+            stage_name=name,
+            stage_type=st,
+            log_prior=d.get("log_prior", []),
+            theta=d.get("theta", []),
+            log_var_const=d.get("log_var_const", []),
+            inv_2var=d.get("inv_2var", []),
+            n_classes=d.get("n_classes", 2),
+            n_features=d.get("n_features", 0),
+        )
+    if st == "gpr":
+        return GPRStage(
+            stage_name=name,
+            stage_type=st,
+            X_train=d.get("X_train", []),
+            alpha=d.get("alpha", []),
+            length_scale=d.get("length_scale", 1.0),
+            amplitude=d.get("amplitude", 1.0),
+            y_train_mean=d.get("y_train_mean", 0.0),
+            y_train_std=d.get("y_train_std", 1.0),
+            n_features=d.get("n_features", 0),
+        )
+    if st == "knn":
+        return KNNStage(
+            stage_name=name,
+            stage_type=st,
+            X_train=d.get("X_train", []),
+            y_train=d.get("y_train", []),
+            k=d.get("k", 5),
+            metric=d.get("metric", "euclidean"),
+            task_type=d.get("task_type", "classifier"),
+            n_classes=d.get("n_classes", 2),
+            n_features=d.get("n_features", 0),
+            n_outputs=d.get("n_outputs", 1),
         )
     if st == "kinematics":
         return KinematicsStage(

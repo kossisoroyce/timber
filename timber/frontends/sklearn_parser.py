@@ -17,20 +17,28 @@ import pickle
 from pathlib import Path
 from typing import Any, Optional
 
+import math
+
 import numpy as np
 
 from timber.ir.model import (
     Field,
     FieldType,
+    GPRStage,
+    IsolationForestStage,
+    KNNStage,
     Metadata,
+    NaiveBayesStage,
     Objective,
     PipelineStage,
+    SVMStage,
     ScalerStage,
     Schema,
     TimberIR,
     Tree,
     TreeEnsembleStage,
     TreeNode,
+    _c_factor,
 )
 
 
@@ -64,11 +72,41 @@ def _convert_sklearn(model: Any, artifact_hash: str = "") -> TimberIR:
                 stages.append(scaler_stage)
         estimator = model.steps[-1][1]
 
-    # Parse the tree estimator
-    ensemble_stage = _parse_estimator(estimator)
-    stages.append(ensemble_stage)
+    # Detect non-tree estimators first
+    cls_name = type(estimator).__name__
+    if cls_name == "IsolationForest":
+        primary_stage = _parse_isolation_forest(estimator)
+        n_features = primary_stage.n_features
+        n_outputs = 1
+        objective_name = "anomaly:isolation_forest"
+    elif cls_name == "OneClassSVM":
+        primary_stage = _parse_one_class_svm(estimator)
+        n_features = primary_stage.n_features
+        n_outputs = 1
+        objective_name = "anomaly:one_class_svm"
+    elif cls_name == "GaussianNB":
+        primary_stage = _parse_naive_bayes(estimator)
+        n_features = primary_stage.n_features
+        n_outputs = primary_stage.n_classes
+        objective_name = "multi:naive_bayes"
+    elif cls_name == "GaussianProcessRegressor":
+        primary_stage = _parse_gpr(estimator)
+        n_features = primary_stage.n_features
+        n_outputs = 1
+        objective_name = "reg:gpr"
+    elif cls_name in ("KNeighborsClassifier", "KNeighborsRegressor"):
+        primary_stage = _parse_knn(estimator)
+        n_features = primary_stage.n_features
+        n_outputs = primary_stage.n_outputs
+        objective_name = "classify:knn" if primary_stage.task_type == "classifier" else "reg:knn"
+    else:
+        primary_stage = _parse_estimator(estimator)
+        n_features = primary_stage.n_features
+        n_outputs = 1 if primary_stage.n_classes <= 2 else primary_stage.n_classes
+        objective_name = primary_stage.objective.value
 
-    n_features = ensemble_stage.n_features
+    stages.append(primary_stage)
+
     if hasattr(estimator, "feature_names_in_"):
         feature_names = list(estimator.feature_names_in_)
 
@@ -78,7 +116,6 @@ def _convert_sklearn(model: Any, artifact_hash: str = "") -> TimberIR:
               dtype=FieldType.FLOAT32, index=i)
         for i in range(n_features)
     ]
-    n_outputs = 1 if ensemble_stage.n_classes <= 2 else ensemble_stage.n_classes
     output_fields = [
         Field(name=f"output_{i}", dtype=FieldType.FLOAT32, index=i)
         for i in range(n_outputs)
@@ -89,7 +126,7 @@ def _convert_sklearn(model: Any, artifact_hash: str = "") -> TimberIR:
         source_framework_version=[0, 0, 0],
         source_artifact_hash=artifact_hash,
         feature_names=feature_names,
-        objective_name=ensemble_stage.objective.value,
+        objective_name=objective_name,
         training_params={},
     )
 
@@ -103,6 +140,274 @@ def _convert_sklearn(model: Any, artifact_hash: str = "") -> TimberIR:
         pipeline=stages,
         schema=Schema(input_fields=input_fields, output_fields=output_fields),
         metadata=metadata,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Isolation Forest
+# ---------------------------------------------------------------------------
+
+def _parse_isolation_forest(est: Any) -> IsolationForestStage:
+    """Convert sklearn IsolationForest to IsolationForestStage.
+
+    Each isolation-tree leaf stores a pre-computed path-length contribution:
+        leaf_value = leaf_depth + c(n_node_samples_at_leaf)
+    so C99 inference needs no log() at runtime.
+    """
+    n_features = int(est.n_features_in_)
+    max_samples = int(est.max_samples_)
+    offset = float(est.offset_)
+
+    trees: list[Tree] = []
+    for tree_idx, (sk_est, feat_map) in enumerate(
+        zip(est.estimators_, est.estimators_features_)
+    ):
+        t = _iforest_tree_to_timber(sk_est.tree_, tree_idx, feat_map)
+        trees.append(t)
+
+    return IsolationForestStage(
+        stage_name="sklearn_isolation_forest",
+        stage_type="isolation_forest",
+        trees=trees,
+        n_features=n_features,
+        max_samples=max_samples,
+        offset=offset,
+    )
+
+
+def _iforest_tree_to_timber(sk_tree: Any, tree_id: int, feat_map: Any) -> Tree:
+    """Convert an isolation tree to a Timber Tree.
+
+    Leaf values = traversal_depth + c(n_node_samples), pre-computed at
+    parse time so C99 needs no floating-point log().
+    """
+    children_left  = sk_tree.children_left
+    children_right = sk_tree.children_right
+    feature        = sk_tree.feature
+    threshold      = sk_tree.threshold
+    n_node_samples = sk_tree.n_node_samples
+    n_nodes        = sk_tree.node_count
+    TREE_LEAF = -1
+
+    # BFS to compute depths
+    depths = [0] * n_nodes
+    queue = [0]
+    while queue:
+        idx = queue.pop(0)
+        if children_left[idx] != TREE_LEAF:
+            depths[children_left[idx]]  = depths[idx] + 1
+            depths[children_right[idx]] = depths[idx] + 1
+            queue.append(children_left[idx])
+            queue.append(children_right[idx])
+
+    nodes: list[TreeNode] = []
+    for i in range(n_nodes):
+        is_leaf = children_left[i] == TREE_LEAF
+        # Remap subsampled feature index → original feature index
+        orig_feat = int(feat_map[int(feature[i])]) if not is_leaf else -1
+        # Pre-compute path-length contribution for this leaf
+        leaf_val = float(depths[i]) + _c_factor(int(n_node_samples[i])) if is_leaf else 0.0
+        nodes.append(TreeNode(
+            node_id=i,
+            feature_index=orig_feat,
+            threshold=float(threshold[i]) if not is_leaf else 0.0,
+            left_child=int(children_left[i])  if not is_leaf else -1,
+            right_child=int(children_right[i]) if not is_leaf else -1,
+            is_leaf=is_leaf,
+            leaf_value=leaf_val,
+            depth=depths[i],
+            default_left=True,
+        ))
+
+    max_depth_val = max(depths) if depths else 0
+    tree = Tree(tree_id=tree_id, nodes=nodes, max_depth=max_depth_val)
+    tree.recount()
+    return tree
+
+
+# ---------------------------------------------------------------------------
+# One-Class SVM
+# ---------------------------------------------------------------------------
+
+def _parse_one_class_svm(est: Any) -> SVMStage:
+    """Convert sklearn OneClassSVM to SVMStage(is_one_class=True)."""
+    kernel = est.kernel.lower()
+    n_features = int(est.n_features_in_)
+    sv = est.support_vectors_.astype(np.float64).tolist()
+    # dual_coef_ shape is (1, n_sv) for one-class
+    dc = est.dual_coef_.astype(np.float64).flatten().tolist()
+    # C99 emitter computes: decision = rho[0] + sum(dual_coef * kernel)
+    # sklearn: decision_function = sum(...) + intercept_  => store rho = intercept_
+    rho = [float(est.intercept_[0])]
+
+    gamma_val: float
+    if est.gamma == "scale":
+        gamma_val = float(est._gamma)
+    elif est.gamma == "auto":
+        gamma_val = 1.0 / n_features
+    else:
+        gamma_val = float(est.gamma)
+
+    return SVMStage(
+        stage_name="sklearn_one_class_svm",
+        stage_type="svm",
+        kernel_type=kernel,
+        support_vectors=sv,
+        dual_coef=dc,
+        rho=rho,
+        n_support=[len(sv)],
+        gamma=gamma_val,
+        coef0=float(est.coef0),
+        degree=int(est.degree),
+        n_features=n_features,
+        n_classes=1,
+        objective=Objective.CUSTOM,
+        post_transform="none",
+        is_one_class=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gaussian Naive Bayes
+# ---------------------------------------------------------------------------
+
+def _parse_naive_bayes(est: Any) -> NaiveBayesStage:
+    """Convert sklearn GaussianNB to NaiveBayesStage.
+
+    Pre-computes log-variance constants and inverse-2-variance to avoid
+    log() and division at C99 inference time.
+    """
+    n_classes  = int(est.class_count_.shape[0])
+    n_features = int(est.theta_.shape[1])
+    TWO_PI     = 2.0 * math.pi
+
+    log_prior   = np.log(est.class_prior_).tolist()
+    theta       = est.theta_.astype(np.float64).tolist()
+    # var_ already includes var_smoothing
+    var         = est.var_.astype(np.float64)
+    log_vc      = (-0.5 * np.log(TWO_PI * var)).tolist()
+    inv_2v      = (1.0 / (2.0 * var)).tolist()
+
+    return NaiveBayesStage(
+        stage_name="sklearn_gaussian_nb",
+        stage_type="naive_bayes",
+        log_prior=log_prior,
+        theta=theta,
+        log_var_const=log_vc,
+        inv_2var=inv_2v,
+        n_classes=n_classes,
+        n_features=n_features,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Gaussian Process Regressor
+# ---------------------------------------------------------------------------
+
+def _parse_gpr(est: Any) -> GPRStage:
+    """Convert sklearn GaussianProcessRegressor (RBF kernel) to GPRStage.
+
+    Supports: RBF, ConstantKernel * RBF, WhiteKernel additive noise.
+    """
+    n_features = int(est.X_train_.shape[1])
+
+    # Extract kernel hyperparameters from the *fitted* kernel
+    length_scale, amplitude = _extract_rbf_params(est.kernel_)
+
+    # alpha_ = K_inv @ (y - y_mean)  (already computed by sklearn)
+    alpha_vec = est.alpha_.astype(np.float64).flatten().tolist()
+    X_tr = est.X_train_.astype(np.float64).tolist()
+
+    _ym = getattr(est, "_y_train_mean", 0.0)
+    _ys = getattr(est, "_y_train_std",  1.0)
+    y_mean = float(np.ravel(_ym)[0]) if hasattr(_ym, "__len__") else float(_ym)
+    y_std  = (float(np.ravel(_ys)[0]) if hasattr(_ys, "__len__") else float(_ys)) or 1.0
+
+    return GPRStage(
+        stage_name="sklearn_gpr",
+        stage_type="gpr",
+        X_train=X_tr,
+        alpha=alpha_vec,
+        length_scale=length_scale,
+        amplitude=amplitude,
+        y_train_mean=y_mean,
+        y_train_std=y_std,
+        n_features=n_features,
+    )
+
+
+def _extract_rbf_params(kernel: Any) -> tuple[float, float]:
+    """Walk a sklearn kernel tree and return (length_scale, amplitude)."""
+    cls = type(kernel).__name__
+    if cls == "RBF":
+        return float(kernel.length_scale), 1.0
+    if cls == "ConstantKernel":
+        return 1.0, float(kernel.constant_value ** 0.5)
+    if cls in ("Product", "Sum"):
+        ls, amp = 1.0, 1.0
+        for part in (kernel.k1, kernel.k2):
+            pn = type(part).__name__
+            if pn == "RBF":
+                ls = float(part.length_scale)
+            elif pn == "ConstantKernel":
+                amp = float(part.constant_value ** 0.5)
+            elif pn == "WhiteKernel":
+                pass  # noise handled by alpha_
+            elif pn in ("Product", "Sum"):
+                sub_ls, sub_amp = _extract_rbf_params(part)
+                if sub_ls != 1.0:
+                    ls = sub_ls
+                if sub_amp != 1.0:
+                    amp = sub_amp
+        return ls, amp
+    # Fallback
+    if hasattr(kernel, "length_scale"):
+        return float(kernel.length_scale), 1.0
+    return 1.0, 1.0
+
+
+# ---------------------------------------------------------------------------
+# k-Nearest Neighbours
+# ---------------------------------------------------------------------------
+
+def _parse_knn(est: Any) -> KNNStage:
+    """Convert sklearn KNeighborsClassifier/Regressor to KNNStage."""
+    cls_name   = type(est).__name__
+    is_clf     = cls_name == "KNeighborsClassifier"
+    n_features = int(est.n_features_in_)
+    k          = int(est.n_neighbors)
+    metric_map = {"euclidean": "euclidean", "l2": "euclidean",
+                  "manhattan": "manhattan", "l1": "manhattan",
+                  "minkowski": "euclidean"}
+    metric = metric_map.get(str(est.metric).lower(), "euclidean")
+
+    X_tr = est._fit_X.astype(np.float64).tolist()
+
+    if is_clf:
+        n_classes = int(len(est.classes_))
+        # Store one-hot encoded class index as y_train
+        y_raw = est._y.astype(np.float64)
+        y_tr  = [[float(v)] for v in y_raw]
+        n_outputs = 1
+    else:
+        n_classes = 0
+        y_raw = np.array(est._y, dtype=np.float64)
+        if y_raw.ndim == 1:
+            y_raw = y_raw.reshape(-1, 1)
+        y_tr      = y_raw.tolist()
+        n_outputs = int(y_raw.shape[1])
+
+    return KNNStage(
+        stage_name="sklearn_knn",
+        stage_type="knn",
+        X_train=X_tr,
+        y_train=y_tr,
+        k=k,
+        metric=metric,
+        task_type="classifier" if is_clf else "regressor",
+        n_classes=n_classes,
+        n_features=n_features,
+        n_outputs=n_outputs,
     )
 
 

@@ -7,9 +7,27 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
-## [Unreleased]
+## [0.5.0] — 2026-03-13
 
 ### Added
+
+- **`IsolationForestStage` IR node** — new `PipelineStage` subclass with flat-tree anomaly scoring; leaf values store pre-computed path-length contributions (`depth + c(n_node_samples)`) so C99 inference needs no `log()` at runtime; output = `−anomaly_score − offset` (positive → inlier)
+- **`NaiveBayesStage` IR node** — Gaussian Naive Bayes; stores per-class log-priors, means (`theta`), pre-computed `log_var_const` and `inv_2var` to eliminate `log()` and division at runtime; softmax output
+- **`GPRStage` IR node** — Gaussian Process Regressor (RBF kernel); stores training points, `alpha` vector, and pre-computed `inv_2ls2` / `amp2` constants; normalised output via `y_train_mean` / `y_train_std`
+- **`KNNStage` IR node** — k-Nearest Neighbours classifier or regressor (lookup table); supports Euclidean and Manhattan metrics; classifier outputs winning class index, regressor outputs averaged label vector
+- **`SVMStage.is_one_class`** — boolean flag added to `SVMStage` for `OneClassSVM`; serialisation and deserialisation updated; `decision_function = sum(alpha_i × K) + intercept_`
+- **sklearn parsers for all 5 new primitives** (`timber/frontends/sklearn_parser.py`):
+  - `_parse_isolation_forest` — remap subsampled feature indices; BFS depth pre-computation; `max_depth` set on each `Tree` for correct C99 guard
+  - `_parse_one_class_svm` — extracts `_gamma`, handles `scale`/`auto`/numeric gamma
+  - `_parse_naive_bayes` — pre-computes `log_var_const` and `inv_2var` from `GaussianNB.var_`
+  - `_parse_gpr` — walks `ConstantKernel * RBF` kernel tree; extracts `length_scale` and `amplitude`; safe scalar extraction from `_y_train_mean` / `_y_train_std`
+  - `_parse_knn` — handles `KNeighborsClassifier` and `KNeighborsRegressor`; maps `minkowski`/`l1`/`l2` aliases
+- **C99 emitters for all 5 new primitives** (`timber/codegen/c99.py`):
+  - IsolationForest: `iforest_traverse()` with double-precision thresholds and path-lengths; `exp2(−mean_path / c_max)` anomaly score
+  - Naive Bayes: log-likelihood accumulation + numerically stable softmax
+  - GPR: RBF kernel matrix-vector product with double accumulator
+  - k-NN: configurable distance metric; min-heap top-k; majority vote / mean aggregation
+- **119 nuclear tests** (`tests/test_primitives.py`) covering IR round-trip, sklearn parsing field correctness, C99 code structure, compilation, and numerical accuracy vs. sklearn reference for all 5 primitives
 
 - **URDF forward-kinematics frontend** (`timber/frontends/urdf_parser.py`) — `URDFParser` parses URDF XML into a `KinematicsStage` IR; auto-detects base link and end-effector; supports all joint types (`revolute`, `prismatic`, `continuous`, `fixed`)
 - **`JointSpec` IR node** — new dataclass carrying joint name, type, axis, origin (xyz + rpy), parent/child links, and position limits; full JSON serialization round-trip
