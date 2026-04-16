@@ -6,9 +6,9 @@ title: Introduction
 
 # Timber
 
-**Ollama for classical ML models.** Compile and serve tree-based models at native speed.
+**ML inference compiler with hardware acceleration.** Compile XGBoost, LightGBM, sklearn, CatBoost, and ONNX to C99, SIMD, GPU, or FPGA — with WCET analysis, safety certification, and supply-chain security built in.
 
-Timber is an ahead-of-time (AOT) compiler that transforms trained machine learning models — XGBoost, LightGBM, scikit-learn, CatBoost, and ONNX — as well as **URDF robot descriptions** — into optimized, self-contained C99 inference code. No Python runtime at inference time. No dynamic allocation. No recursion. Just fast, auditable, portable code.
+Timber is an ahead-of-time (AOT) compiler that transforms trained machine learning models into optimized, self-contained inference code. No Python runtime at inference time. No dynamic allocation. No recursion. Just fast, auditable, portable code that runs on servers, edge devices, microcontrollers, and safety-critical systems.
 
 ## The Problem
 
@@ -59,7 +59,7 @@ curl http://localhost:11434/api/predict \
 ### Input Frameworks
 - **XGBoost** — JSON model dumps (v2.0+), XGBoost 3.1+ per-class base_score
 - **LightGBM** — Text model files
-- **scikit-learn** — Pickle files (GradientBoosting, RandomForest, Pipeline)
+- **scikit-learn** — Pickle files with 9 model types: GradientBoosting, RandomForest, IsolationForest, ExtraTrees, SVM (SVC/SVR/OneClass), Naive Bayes (Gaussian/Multinomial), GaussianProcessRegressor, KNN (Classifier/Regressor), Linear models, Pipelines
 - **CatBoost** — JSON exports (oblivious trees)
 - **ONNX** — TreeEnsemble, LinearClassifier/Regressor, SVMClassifier/Regressor, Normalizer, Scaler
 - **URDF** — Robot description files → forward kinematics; outputs 4×4 homogeneous transform; inputs are joint angles
@@ -73,10 +73,16 @@ curl http://localhost:11434/api/predict \
 6. Vectorization analysis
 
 ### Output Targets
-- **C99** — Shared (`.so`) or static (`.a`) libraries; embedded cross-compilation via Cortex-M4/M33, RISC-V profiles
-- **LLVM IR** — `.ll` text IR with configurable target triple for hardware-specific optimization
-- **WebAssembly** — `.wat` + JS bindings for browser and edge deployment
-- **MISRA-C:2012** — Safety-critical C with built-in 8-rule compliance checker
+| Target | Description | Use Case |
+|--------|-------------|----------|
+| **C99** | Shared (`.so`) or static (`.a`) libraries | General deployment |
+| **LLVM IR** | `.ll` text IR with configurable target triple | Hardware-specific optimization |
+| **WebAssembly** | `.wat` + JS bindings | Browser and edge deployment |
+| **MISRA-C:2012** | Safety-critical C with 8-rule compliance checker | Certified systems |
+| **SIMD** | AVX2, AVX-512, ARM NEON/SVE, RISC-V V | Vectorized inference (2-8× speedup) |
+| **GPU** | CUDA (sm75/sm86), Metal (Apple Silicon), OpenCL | Batch inference, edge GPUs |
+| **FPGA HLS** | Xilinx Vitis, Intel SDK | Deterministic hardware acceleration |
+| **Embedded** | Cortex-M4/M7, ESP32, STM32H7 | Microcontrollers, no-heap, static buffers |
 
 ### Production Features
 - Deterministic JSON **audit trails** for regulatory compliance
@@ -85,7 +91,12 @@ curl http://localhost:11434/api/predict \
 - **Ensemble composition** (voting, stacking)
 - Multi-worker FastAPI server with `GET /api/metrics` (P50/P95/P99/P999 rolling window)
 - Thread-safe, zero-allocation generated code
-- 313-test nuclear-grade test suite (264 ML + 49 kinematics)
+- **WCET analysis** — Worst-case execution time for Cortex-M4/M7, x86_64, AArch64, RISC-V
+- **Safety certification** — DO-178C (aviation), ISO 26262 (automotive), IEC 62304 (medical) reports
+- **Supply chain security** — Ed25519 signing, AES-256-GCM encryption, TPM 2.0 hooks
+- **Deployment bundles** — Air-gapped tar.gz with manifests and signatures
+- **Native servers** — C++ gRPC/HTTP, ROS 2 nodes, PX4 module skeletons
+- 650+ test nuclear-grade test suite (core + acceleration + safety)
 
 ## Next Steps
 

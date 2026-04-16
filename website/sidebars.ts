@@ -16,6 +16,7 @@ const sidebars: SidebarsConfig = {
         'guides/embedding-in-c',
         'guides/wasm-deployment',
         'guides/misra-c-compliance',
+        'guides/acceleration',
         'guides/differential-compilation',
         'guides/ensemble-composition',
         'guides/audit-trails',

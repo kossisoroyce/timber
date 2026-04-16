@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Timber',
-  tagline: 'Ollama for classical ML models. Compile and serve tree-based models at native speed.',
+  tagline: 'ML inference compiler with hardware acceleration. Compile XGBoost, LightGBM, sklearn to C99/SIMD/GPU/FPGA with WCET analysis and safety certification.',
   favicon: 'img/favicon.ico',
 
   url: 'https://kossisoroyce.github.io',

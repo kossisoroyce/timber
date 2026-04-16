@@ -124,9 +124,114 @@ Benchmark inference performance.
 timber bench --artifact ./dist/ --data test.csv --batch-sizes 1,10,100,1000
 ```
 
+## `timber-accel` Commands
+
+Hardware acceleration, safety, and deployment CLI (included with `timber-compiler`).
+
+### `timber-accel compile`
+
+Compile to SIMD, GPU, HLS, or embedded targets.
+
+```bash
+timber-accel compile --model fraud.pkl --target x86_64_avx2_simd --out ./dist
+timber-accel compile --model sensor.pkl --target embedded_cortex_m4 --sign --out ./fw
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model PATH` | Required | Model file path |
+| `--target NAME` | `x86_64_generic` | Target profile (built-in or TOML path) |
+| `--out DIR` | `./dist` | Output directory |
+| `--deterministic` | False | Deterministic build |
+| `--sign` | False | Generate Ed25519 keypair and sign |
+| `--calibration-data PATH` | None | CSV for branch optimization |
+
+### `timber-accel wcet`
+
+Worst-case execution time analysis.
+
+```bash
+timber-accel wcet --model model.pkl --arch cortex-m4 --clock-mhz 168 --safety-margin 3.0
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model PATH` | Required | Model file path |
+| `--arch ARCH` | Required | Architecture: `cortex-m4`, `cortex-m7`, `x86_64`, `aarch64`, `riscv64` |
+| `--clock-mhz MHz` | Required | CPU clock frequency |
+| `--safety-margin FLOAT` | `2.0` | Multiplier for safety margin |
+
+### `timber-accel certify`
+
+Generate safety certification reports.
+
+```bash
+timber-accel certify --model model.pkl --profile do_178c --include-wcet --output cert.json
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model PATH` | Required | Model file path |
+| `--profile NAME` | Required | `do_178c`, `iso_26262`, `iec_62304` |
+| `--include-wcet` | False | Embed WCET analysis |
+| `--arch ARCH` | None | Architecture for WCET (if `--include-wcet`) |
+| `--output PATH` | `certification_report.json` | Output file |
+
+### `timber-accel sign` / `verify`
+
+Ed25519 artifact signing.
+
+```bash
+timber-accel sign --model ./dist --generate-key
+timber-accel verify --model ./dist --sig ./dist.sig --key timber_accel.pub
+```
+
+### `timber-accel encrypt` / `decrypt`
+
+AES-256-GCM encryption.
+
+```bash
+timber-accel encrypt --model ./dist --key $TIMBER_KEY --output dist.enc
+timber-accel decrypt --model dist.enc --key $TIMBER_KEY --output ./dist
+```
+
+### `timber-accel bundle`
+
+Create air-gapped deployment packages.
+
+```bash
+timber-accel bundle --model model.pkl --target embedded_cortex_m4 --include-source --output deploy.tar.gz
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model PATH` | Required | Model file path |
+| `--target NAME` | Required | Target profile for compilation |
+| `--include-source` | False | Include C source files |
+| `--include-cert` | False | Include certification report |
+| `--output PATH` | `bundle.tar.gz` | Output archive |
+
+### `timber-accel serve-native`
+
+Generate C++ gRPC/HTTP servers.
+
+```bash
+timber-accel serve-native --model model.pkl --grpc --port 50051
+timber-accel serve-native --model model.pkl --http --port 8080 --grpc
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--model PATH` | Required | Model file path |
+| `--grpc` | False | Generate gRPC server |
+| `--http` | False | Generate HTTP server |
+| `--port PORT` | `50051` (gRPC) / `8080` (HTTP) | Server port |
+| `--out DIR` | `./serve_native` | Output directory |
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TIMBER_HOME` | `~/.timber` | Model store root directory |
 | `CC` | `gcc` | C compiler to use for compilation |
+| `TIMBER_KEY` | None | AES-256-GCM key for encrypt/decrypt operations |

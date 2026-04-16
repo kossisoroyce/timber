@@ -16,13 +16,24 @@ Get a trained model running at native speed in 60 seconds.
 ## Installation
 
 ```bash
+# Base install (core compiler + acceleration)
 pip install timber-compiler
+
+# With GPU support (CUDA, Metal, OpenCL)
+pip install timber-compiler[gpu]
+
+# With ROS 2 support
+pip install timber-compiler[ros]
+
+# Full install (all features)
+pip install timber-compiler[full]
 ```
 
 Verify the install:
 
 ```bash
 timber --help
+timber-accel --help
 ```
 
 ## Quick Start
@@ -136,5 +147,6 @@ timber serve breast-cancer
 ## Next Steps
 
 - **[How It Works](/docs/how-it-works)** — deep dive into the compiler pipeline
+- **[Hardware Acceleration](/docs/guides/acceleration)** — SIMD, GPU, FPGA, embedded targets
 - **[Examples](/docs/examples/xgboost)** — per-framework walkthroughs
 - **[API Reference](/docs/api-reference/cli)** — complete CLI and HTTP docs
