@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from timber.accel.accel.simd.base import SIMDEmitterBase
 from timber.codegen.c99 import TargetSpec
 from timber.ir.model import TimberIR, TreeEnsembleStage
-
-from timber.accel.accel.simd.base import SIMDEmitterBase
 
 
 class AVX512Emitter(SIMDEmitterBase):
@@ -157,7 +156,7 @@ class AVX512Emitter(SIMDEmitterBase):
         lines.append("")
         lines.append(f"        float feat_vals[{W}] __attribute__((aligned(64)));")
         lines.append(f"        float thresh_vals[{W}] __attribute__((aligned(64)));")
-        lines.append(f"        __mmask16 active_mask = 0;")
+        lines.append("        __mmask16 active_mask = 0;")
         lines.append("")
         lines.append(f"        for (int i = 0; i < {W}; i++) {{")
         lines.append("            int n = nodes[i];")
@@ -223,7 +222,7 @@ class AVX512Emitter(SIMDEmitterBase):
         lines.append("")
         lines.append(f"    /* Process {W} samples at a time */")
         lines.append(f"    for (int s = 0; s < simd_end; s += {W}) {{")
-        lines.append(f"        __m512 vacc = _mm512_set1_ps(base_score);")
+        lines.append("        __m512 vacc = _mm512_set1_ps(base_score);")
         lines.append("")
         lines.append(f"        const float* feature_ptrs[{W}];")
         lines.append(f"        for (int i = 0; i < {W}; i++) {{")
@@ -238,7 +237,7 @@ class AVX512Emitter(SIMDEmitterBase):
         lines.append("            vacc = _mm512_add_ps(vacc, vtree);")
         lines.append("        }")
         lines.append("")
-        lines.append(f"        _mm512_storeu_ps(outputs + s, vacc);")
+        lines.append("        _mm512_storeu_ps(outputs + s, vacc);")
         lines.append("    }")
         lines.append("")
         lines.append("    /* Scalar fallback for remaining samples */")

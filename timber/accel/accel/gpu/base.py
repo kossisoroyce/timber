@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import abc
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from timber.codegen.c99 import C99Output, TargetSpec
 from timber.ir.model import TimberIR

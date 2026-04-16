@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from timber.accel.accel.hls.base import HLSEmitterBase
 from timber.codegen.c99 import TargetSpec
 from timber.ir.model import TimberIR, TreeEnsembleStage
-
-from timber.accel.accel.hls.base import HLSEmitterBase
 
 
 class IntelFPGAEmitter(HLSEmitterBase):
@@ -211,7 +210,7 @@ class IntelFPGAEmitter(HLSEmitterBase):
             "    hls_register float result[N_CLASSES];",
             "",
             "    /* Use hls_bankbits to control bank selection for tree arrays. */",
-            f"    hls_bankbits(0, 1) static const int local_feature_idx[TOTAL_NODES]",
+            "    hls_bankbits(0, 1) static const int local_feature_idx[TOTAL_NODES]",
             "        __attribute__((section(\".tree_data\")));",
             "",
             "    for (int s = 0; s < n_samples; ++s) {",

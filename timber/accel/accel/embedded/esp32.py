@@ -9,10 +9,9 @@ Generates C code targeting ESP32 / ESP32-S3 using ESP-IDF conventions:
 
 from __future__ import annotations
 
+from timber.accel.accel.embedded.base import EmbeddedEmitterBase
 from timber.codegen.c99 import C99Output, TargetSpec
 from timber.ir.model import TimberIR
-
-from timber.accel.accel.embedded.base import EmbeddedEmitterBase
 
 
 class ESP32Emitter(EmbeddedEmitterBase):
@@ -80,7 +79,7 @@ class ESP32Emitter(EmbeddedEmitterBase):
             "    float*       output,",
             "    const TimberCtx* ctx)",
             "{",
-            f"    timber_task_params_t* params = (timber_task_params_t*)pvPortMalloc(sizeof(timber_task_params_t));",
+            "    timber_task_params_t* params = (timber_task_params_t*)pvPortMalloc(sizeof(timber_task_params_t));",
             "    if (!params) {",
             '        ESP_LOGE(TIMBER_TAG, "Failed to allocate task params");',
             "        return -1;",
@@ -91,7 +90,7 @@ class ESP32Emitter(EmbeddedEmitterBase):
             "    params->done   = 0;",
             "    params->result = -1;",
             "",
-            f"    BaseType_t rc = xTaskCreatePinnedToCore(",
+            "    BaseType_t rc = xTaskCreatePinnedToCore(",
             "        _timber_infer_task,",
             '        "timber_infer",',
             f"        {self._task_stack},",

@@ -23,7 +23,9 @@
 
 ---
 
-Timber takes a trained ML model — XGBoost, LightGBM, scikit-learn, CatBoost, ONNX (tree ensembles, linear models, SVMs), or a **URDF robot description** — runs it through a multi-pass optimizing compiler, and emits a **self-contained C99 inference artifact** with zero runtime dependencies. A built-in HTTP server (Ollama-compatible API) lets you serve any model — local file or remote URL — in one command.
+Timber takes a trained ML model — XGBoost, LightGBM, scikit-learn, CatBoost, ONNX (tree ensembles, linear models, SVMs, k-NN, Naive Bayes, GPR, Isolation Forest), or a **URDF robot description** — runs it through a multi-pass optimizing compiler, and emits a **self-contained C99 inference artifact** with zero runtime dependencies. A built-in HTTP server (Ollama-compatible API) lets you serve any model in one command.
+
+For hardware-accelerated or safety-critical deployments, the bundled **`timber accel`** backend emits AVX2/AVX-512/NEON/SVE/RVV SIMD, CUDA/Metal/OpenCL GPU, Xilinx/Intel FPGA HLS, and Cortex-M/ESP32/STM32 embedded variants — plus WCET analysis, DO-178C/ISO-26262/IEC-62304 certification reports, Ed25519 artifact signing, AES-256-GCM encryption, air-gapped deployment bundles, and ROS 2 / PX4 / gRPC server generators. **Everything ships in one `pip install`.**
 
 > **~2 µs single-sample inference · ~336× faster than Python XGBoost · ~48 KB artifact · zero runtime dependencies**
 
@@ -78,6 +80,7 @@ $ timber serve fraud-detector
 - [How it works](#how-it-works)
 - [Quick Start](#quick-start)
 - [Supported Formats](#supported-formats)
+- [Hardware Acceleration & Safety](#hardware-acceleration--safety-timber-accel)
 - [Performance](#performance)
 - [Runtime Comparison](#runtime-comparison)
 - [API Reference](#api-reference)
@@ -196,10 +199,67 @@ curl -s http://localhost:11434/api/predict \
 |-----------|-------------|-------|
 | XGBoost | `.json` | All objectives; multiclass, binary, regression; XGBoost 3.1+ per-class base_score |
 | LightGBM | `.txt`, `.model`, `.lgb` | All objectives including multiclass |
-| scikit-learn | `.pkl`, `.pickle` | GradientBoostingClassifier/Regressor, RandomForest, ExtraTrees, DecisionTree, Pipeline |
+| scikit-learn | `.pkl`, `.pickle` | GradientBoosting, RandomForest, ExtraTrees, DecisionTree, Linear/Logistic, SVM, **OneClassSVM**, **IsolationForest**, **GaussianNB**, **KNeighborsClassifier/Regressor**, **GaussianProcessRegressor**, `Pipeline` |
 | ONNX | `.onnx` | `TreeEnsembleClassifier/Regressor`, `LinearClassifier/Regressor`, `SVMClassifier/Regressor`, `Normalizer`, `Scaler` |
 | CatBoost | `.json` | JSON export (`save_model(..., format='json')`) |
 | URDF | `.urdf` | Robot description → forward kinematics; outputs 4×4 homogeneous transform; inputs are joint angles |
+
+---
+
+## Hardware Acceleration & Safety (`timber accel`)
+
+Every `pip install timber-compiler` also installs the **`timber-accel`** CLI and the `timber.accel` Python package — no separate install, no paid tier.
+
+### Target backends
+
+| Category | Backends |
+|----------|----------|
+| **SIMD** | AVX2, AVX-512, ARM NEON, ARM SVE, RISC-V V (RVV) |
+| **GPU** | CUDA (SM 7.5 / 8.6), Apple Metal (M1+), OpenCL |
+| **FPGA / HLS** | Xilinx Vitis HLS, Intel FPGA SDK (OpenCL) |
+| **Embedded** | ARM Cortex-M4 / M7, ESP32, STM32 (no-heap, static buffers) |
+
+18 target profiles ship as TOML files under `timber/accel/targets/` — load one by name or point at a custom `.toml`.
+
+### Safety & certification
+
+- **WCET analysis** (`timber-accel wcet`) — worst/average-case cycle counts per IR stage for Cortex-M4/M7, x86_64, AArch64, RISC-V64 with configurable safety margin; advisory output (not a replacement for `aiT`/`RapiTime`).
+- **Deterministic & constant-time IR passes** — eliminates data-dependent branches in generated C.
+- **Certification reports** (`timber-accel certify`) — structured JSON reports for DO-178C (levels A–D), ISO 26262 (ASIL A–D), IEC 62304 (classes A/B/C); heuristic static analysis plus optional embedded WCET block.
+
+### Supply chain
+
+- **Ed25519 signing & verification** (`timber-accel sign` / `verify`) — per-artifact detached signatures; keypair generation built in.
+- **AES-256-GCM encryption** (`timber-accel encrypt` / `decrypt`) — symmetric protection for models in transit / on-disk.
+- **TPM hooks** — Linux TPM 2.0 and software emulator paths.
+- **Air-gapped deployment bundles** (`timber-accel bundle`) — tar.gz with model artifact, optional source, optional cert report, manifest for offline deployment.
+
+### Deployment generators
+
+- **C++ gRPC inference server** (`timber-accel serve-native`) — wraps the compiled model in a gRPC (or plain HTTP) service you can drop into a production C++ stack.
+- **ROS 2 node package** — launch file + `rclpy` node that calls the compiled model on a ROS topic.
+- **PX4 autopilot module** — PX4-style uORB module skeleton for flight-controller deployment.
+- **Sensor preprocessing** — radar, RF, and telemetry front-ends (C callable from compiled code).
+
+### Quick examples
+
+```bash
+# Compile with AVX2 SIMD and sign the output
+timber-accel compile --model fraud.pkl --target x86_64_avx2_simd --sign --out ./dist
+
+# WCET for a Cortex-M4 flight controller at 168 MHz
+timber-accel wcet --model anomaly.pkl --arch cortex-m4 --clock-mhz 168
+
+# DO-178C Level B certification report with embedded WCET
+timber-accel certify --model model.pkl --profile do_178c --include-wcet -o cert.json
+
+# Air-gapped deployment bundle
+timber-accel bundle --model model.pkl --include-cert -o deploy.tar.gz
+```
+
+Full CLI reference: `timber-accel --help` · Docs: [`docs/accel.md`](docs/accel.md)
+
+> **Advisory notice** — WCET, MISRA-C, and certification features are heuristic / regex-based and explicitly documented as **advisory only**. For safety-critical certification, use certified tooling (LDRA, Polyspace, Astrée, aiT, RapiTime) and verify independently with a qualified DER.
 
 ---
 
@@ -274,15 +334,31 @@ curl -s http://localhost:11434/api/predict \
 
 ## CLI Reference
 
+### `timber` — compiler + inference server
+
+```text
+timber load     <path> --name <name>   Compile and register a model
+timber serve    <name> [--port N]      Start the inference server
+timber list                            List registered models
+timber inspect  <name>                 Show model IR summary and schema
+timber validate <name>                 Run numerical validation against source
+timber bench    <name>                 Benchmark latency and throughput
+timber pull     <url>  --name <name>   Download and compile from URL
+timber remove   <name>                 Remove a model from the registry
 ```
-timber load   <path> --name <name>   Compile and register a model
-timber serve  <name> [--port N]      Start the inference server
-timber list                          List registered models
-timber inspect <name>                Show model IR summary and schema
-timber validate <name>               Run numerical validation against source
-timber bench  <name>                 Benchmark latency and throughput
-timber pull   <url>  --name <name>   Download and compile from URL
-timber remove <name>                 Remove a model from the registry
+
+### `timber-accel` — acceleration, safety, deployment
+
+```text
+timber-accel compile      Compile with SIMD/GPU/HLS/embedded target + optional safety transforms
+timber-accel wcet         Worst-case execution time analysis (Cortex-M4/M7, x86_64, AArch64, RISC-V64)
+timber-accel certify      Generate DO-178C / ISO 26262 / IEC 62304 certification report
+timber-accel sign         Ed25519-sign an artifact (generates keypair on demand)
+timber-accel verify       Verify an Ed25519 signature
+timber-accel encrypt      AES-256-GCM encrypt a model artifact
+timber-accel decrypt      AES-256-GCM decrypt a model artifact
+timber-accel bundle       Create an air-gapped deployment tar.gz
+timber-accel serve-native Generate a C++ gRPC / HTTP inference server
 ```
 
 ---
@@ -328,6 +404,14 @@ Each script trains a model, saves it, runs `timber load`, and validates predicti
 | ✅ | LLVM IR backend with configurable target triples |
 | ✅ | Differential privacy (Laplace + Gaussian) inference mode |
 | ✅ | Richer `bench` reports: P50/P95/P99/P999, CV%, JSON + HTML output |
+| ✅ | URDF forward-kinematics frontend — robot FK as a compiled C function |
+| ✅ | 5 new sklearn primitives: IsolationForest, OneClassSVM, GaussianNB, GPR, k-NN |
+| ✅ | SIMD codegen (AVX2, AVX-512, NEON, SVE, RVV) via `timber.accel` |
+| ✅ | GPU codegen (CUDA, Metal, OpenCL) via `timber.accel` |
+| ✅ | FPGA HLS codegen (Xilinx Vitis, Intel FPGA SDK) via `timber.accel` |
+| ✅ | WCET analysis and DO-178C / ISO 26262 / IEC 62304 certification reports |
+| ✅ | Ed25519 signing, AES-256-GCM encryption, air-gapped deployment bundles |
+| ✅ | ROS 2 / PX4 / gRPC server code generators |
 | 🔄 | Remote model registry (`timber pull` from hosted model library) |
 | 🔲 | Neural network operator support (MLPClassifier) |
 | 🔲 | ONNX export path (Timber IR → ONNX) |
@@ -341,11 +425,11 @@ Each script trains a model, saves it, runs `timber load`, and validates predicti
 git clone https://github.com/kossisoroyce/timber.git
 cd timber
 pip install -e ".[dev]"
-pytest tests/ -v                    # 436 tests
+pytest tests/ -v                    # 650+ tests (core + accel)
 ruff check timber/                  # linting
 ```
 
-The test suite covers: parsers (sklearn, ONNX, XGBoost, LightGBM, CatBoost), IR layer (serialization, deep_copy, all stage types), optimizer passes (correctness, idempotency, pipeline fusion math), C99/WASM/MISRA-C/LLVM IR emitters (compile + numeric accuracy), differential privacy (statistical correctness, all dtypes), and full end-to-end pipelines.
+The test suite covers: parsers (sklearn, ONNX, XGBoost, LightGBM, CatBoost, URDF), IR layer (serialization, deep_copy, all stage types including the 5 new primitives), optimizer passes (correctness, idempotency, pipeline fusion math), C99/WASM/MISRA-C/LLVM IR emitters (compile + numeric accuracy), differential privacy (statistical correctness, all dtypes), `timber.accel` (WCET analysis, SIMD codegen, Ed25519 signing, certification reports, SIMD/GPU/HLS target profiles), and full end-to-end pipelines.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full development guide.
 

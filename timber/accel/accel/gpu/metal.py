@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from timber.accel.accel.gpu.base import GPUEmitterBase
 from timber.codegen.c99 import TargetSpec
 from timber.ir.model import TimberIR, TreeEnsembleStage
-
-from timber.accel.accel.gpu.base import GPUEmitterBase
 
 
 class MetalEmitter(GPUEmitterBase):

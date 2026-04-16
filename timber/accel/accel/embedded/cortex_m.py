@@ -6,10 +6,9 @@ with optional DSP/SIMD intrinsics (Cortex-M4+).
 
 from __future__ import annotations
 
+from timber.accel.accel.embedded.base import EmbeddedEmitterBase
 from timber.codegen.c99 import TargetSpec
 from timber.ir.model import TimberIR
-
-from timber.accel.accel.embedded.base import EmbeddedEmitterBase
 
 
 class CortexMEmitter(EmbeddedEmitterBase):
@@ -44,7 +43,7 @@ class CortexMEmitter(EmbeddedEmitterBase):
             "/* --- Cortex-M Startup Configuration --- */",
             "",
             f"/* Stack size: {stack} bytes (validated at link time) */",
-            f"__attribute__((section(\".stack\"))) __attribute__((used))",
+            "__attribute__((section(\".stack\"))) __attribute__((used))",
             f"static uint8_t _timber_stack_area[{stack}];",
             "",
             "/* Heap is intentionally omitted — all allocation is static */",

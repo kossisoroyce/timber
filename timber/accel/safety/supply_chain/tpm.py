@@ -5,7 +5,6 @@ from __future__ import annotations
 import abc
 import os
 import re
-from dataclasses import dataclass
 from typing import Optional
 
 from cryptography.exceptions import InvalidSignature

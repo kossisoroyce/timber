@@ -43,8 +43,8 @@ class HLSEmitterBase(abc.ABC):
 
 
 def get_hls_emitter(profile) -> HLSEmitterBase:
-    from timber.accel.accel.hls.xilinx_vitis import XilinxVitisEmitter
     from timber.accel.accel.hls.intel_fpga import IntelFPGAEmitter
+    from timber.accel.accel.hls.xilinx_vitis import XilinxVitisEmitter
 
     vendor = profile.hls_config.get("vendor", "")
     mapping = {"xilinx": XilinxVitisEmitter, "intel": IntelFPGAEmitter}

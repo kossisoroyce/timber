@@ -34,14 +34,13 @@ def main():
 def compile(model, target, out, deterministic, constant_time, compliance, sign, verify, fmt, no_optimize):
     """Compile model to accelerated C with optional safety transforms."""
     try:
-        from timber.frontends import parse_model
-        from timber.optimizer.pipeline import OptimizerPipeline
-
         from timber.accel._util.target_loader import load_target_profile
-        from timber.accel.accel.simd.base import get_simd_emitter
+        from timber.accel.accel.embedded.base import get_embedded_emitter
         from timber.accel.accel.gpu.base import get_gpu_emitter
         from timber.accel.accel.hls.base import get_hls_emitter
-        from timber.accel.accel.embedded.base import get_embedded_emitter
+        from timber.accel.accel.simd.base import get_simd_emitter
+        from timber.frontends import parse_model
+        from timber.optimizer.pipeline import OptimizerPipeline
 
         console.print(f"[bold]timber-accel compile[/bold] v{__version__}")
 
@@ -125,9 +124,8 @@ def wcet(model, arch, clock_mhz, safety_margin, fmt):
         click.echo("Error: --clock-mhz must be positive", err=True)
         sys.exit(1)
 
-    from timber.frontends import parse_model
-
     from timber.accel.safety.realtime.wcet import DISCLAIMER, analyze_wcet
+    from timber.frontends import parse_model
 
     ir = parse_model(model, format_hint=fmt)
     result = analyze_wcet(ir, arch=arch, clock_mhz=clock_mhz, safety_margin=safety_margin)
@@ -153,9 +151,8 @@ def wcet(model, arch, clock_mhz, safety_margin, fmt):
 @click.option("--fmt", default=None)
 def certify(model, profile, include_wcet, output, fmt):
     """Generate certification report."""
-    from timber.frontends import parse_model
-
     from timber.accel.safety.certification.report import generate_certification_report
+    from timber.frontends import parse_model
 
     ir = parse_model(model, format_hint=fmt)
     report = generate_certification_report(ir, profile, include_wcet=include_wcet)
@@ -177,7 +174,7 @@ def certify(model, profile, include_wcet, output, fmt):
 @click.option("--generate-key", is_flag=True, help="Generate a new key pair.")
 def sign_cmd(model, key, generate_key):
     """Sign a model artifact."""
-    from timber.accel.safety.supply_chain.signing import sign_artifact, generate_keypair
+    from timber.accel.safety.supply_chain.signing import generate_keypair, sign_artifact
 
     if generate_key:
         priv, pub = generate_keypair()
@@ -265,9 +262,8 @@ def serve_native(model, port, grpc):
         click.echo("Error: --port must be between 1 and 65535", err=True)
         sys.exit(1)
 
-    from timber.frontends import parse_model
-
     from timber.accel.deploy.serve_native.server_gen import NativeServerGenerator, ServerConfig
+    from timber.frontends import parse_model
 
     ir = parse_model(model)
     config = ServerConfig(

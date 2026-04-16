@@ -176,9 +176,9 @@ class EmbeddedEmitterBase(abc.ABC):
     def _patch_header(self, model_h: str, ir: TimberIR) -> str:
         """Add embedded defines and stack-usage comment to the header."""
         defines = [
-            f"#define TIMBER_EMBEDDED 1",
+            "#define TIMBER_EMBEDDED 1",
             f"#define TIMBER_EMBEDDED_PLATFORM \"{self.platform_name()}\"",
-            f"#define TIMBER_NO_HEAP 1",
+            "#define TIMBER_NO_HEAP 1",
             f"#define TIMBER_STACK_BUDGET {self.constraints.stack_size}",
         ]
         return "\n".join(defines) + "\n\n" + model_h

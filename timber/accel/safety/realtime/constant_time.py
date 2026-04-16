@@ -20,11 +20,10 @@ from typing import Any
 
 from timber.ir.model import (
     TimberIR,
+    Tree,
     TreeEnsembleStage,
     TreeNode,
-    Tree,
 )
-
 
 DISCLAIMER = (
     "ADVISORY ONLY — Constant-time transformation is a best-effort software "

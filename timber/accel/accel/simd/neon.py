@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from timber.accel.accel.simd.base import SIMDEmitterBase
 from timber.codegen.c99 import TargetSpec
 from timber.ir.model import TimberIR, TreeEnsembleStage
-
-from timber.accel.accel.simd.base import SIMDEmitterBase
 
 
 class NEONEmitter(SIMDEmitterBase):
@@ -222,7 +221,7 @@ class NEONEmitter(SIMDEmitterBase):
         lines.append("")
         lines.append(f"    /* Process {W} samples at a time */")
         lines.append(f"    for (int s = 0; s < simd_end; s += {W}) {{")
-        lines.append(f"        float32x4_t vacc = vdupq_n_f32(base_score);")
+        lines.append("        float32x4_t vacc = vdupq_n_f32(base_score);")
         lines.append("")
         lines.append(f"        const float* feature_ptrs[{W}];")
         lines.append(f"        for (int i = 0; i < {W}; i++) {{")
@@ -237,7 +236,7 @@ class NEONEmitter(SIMDEmitterBase):
         lines.append("            vacc = vaddq_f32(vacc, vtree);")
         lines.append("        }")
         lines.append("")
-        lines.append(f"        vst1q_f32(outputs + s, vacc);")
+        lines.append("        vst1q_f32(outputs + s, vacc);")
         lines.append("    }")
         lines.append("")
         lines.append("    /* Scalar fallback for remaining samples */")

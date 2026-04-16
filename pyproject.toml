@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "timber-compiler"
-version = "0.5.0"
+version = "0.6.0"
 description = "Classical ML Inference Compiler — compiles XGBoost, LightGBM, sklearn, CatBoost, and ONNX models to optimized C99 / LLVM IR / WASM inference artifacts. Includes hardware acceleration (AVX2/NEON/CUDA), safety certification (DO-178C/ISO-26262), supply-chain signing, and embedded/ROS2/PX4 deployment."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -7,7 +7,6 @@ certification reports, an integrity manifest, and optional Ed25519 signature.
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import tarfile
 import tempfile
@@ -17,12 +16,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from timber.accel._util.crypto import KeyPair, sign_data
+from timber.accel.deploy.bundle.manifest import BundleManifest
 from timber.codegen.c99 import C99Emitter
 from timber.frontends import parse_model
-from timber.store import ModelStore
-
-from timber.accel._util.crypto import KeyPair, sha256_digest, sign_data
-from timber.accel.deploy.bundle.manifest import BundleManifest
 
 logger = logging.getLogger(__name__)
 

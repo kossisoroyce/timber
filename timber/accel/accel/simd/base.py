@@ -5,7 +5,6 @@ from __future__ import annotations
 import abc
 import re
 import warnings
-from dataclasses import dataclass
 
 from timber.codegen.c99 import C99Emitter, C99Output, TargetSpec
 from timber.ir.model import TimberIR, TreeEnsembleStage
@@ -166,7 +165,7 @@ class SIMDEmitterBase(abc.ABC):
                 "        return TIMBER_ERR_NULL;",
                 "    }",
                 "    _default_ctx.initialized     = 1;",
-                f"    _default_ctx.n_features      = TIMBER_N_FEATURES;",
+                "    _default_ctx.n_features      = TIMBER_N_FEATURES;",
                 f"    _default_ctx.n_trees         = {n_trees};",
                 f"    _default_ctx.n_nodes         = {total_nodes};",
                 "    _default_ctx.feature_indices  = _timber_flat_features;",
@@ -270,13 +269,13 @@ class SIMDEmitterBase(abc.ABC):
         if range_single is not None:
             start, end = range_single
             replacement = [
-                f"int timber_infer_single(",
+                "int timber_infer_single(",
                 f"    const {float_type}  inputs[TIMBER_N_FEATURES],",
                 f"    {float_type}        outputs[TIMBER_N_OUTPUTS],",
-                f"    const TimberCtx*    ctx",
-                f") {{",
-                f"    return timber_infer_simd(inputs, 1, outputs, ctx);",
-                f"}}",
+                "    const TimberCtx*    ctx",
+                ") {",
+                "    return timber_infer_simd(inputs, 1, outputs, ctx);",
+                "}",
             ]
             lines[start:end + 1] = replacement
         else:
@@ -305,16 +304,16 @@ class SIMDEmitterBase(abc.ABC):
         if range_batch is not None:
             start, end = range_batch
             replacement = [
-                f"int timber_infer(",
+                "int timber_infer(",
                 f"    const {float_type}*  inputs,",
-                f"    int                  n_samples,",
+                "    int                  n_samples,",
                 f"    {float_type}*        outputs,",
-                f"    const TimberCtx*     ctx",
-                f") {{",
-                f"    if (inputs == NULL || outputs == NULL) return TIMBER_ERR_NULL;",
-                f"    if (n_samples <= 0) return TIMBER_ERR_BOUNDS;",
-                f"    return timber_infer_simd(inputs, n_samples, outputs, ctx);",
-                f"}}",
+                "    const TimberCtx*     ctx",
+                ") {",
+                "    if (inputs == NULL || outputs == NULL) return TIMBER_ERR_NULL;",
+                "    if (n_samples <= 0) return TIMBER_ERR_BOUNDS;",
+                "    return timber_infer_simd(inputs, n_samples, outputs, ctx);",
+                "}",
             ]
             lines[start:end + 1] = replacement
         else:
@@ -382,8 +381,8 @@ def get_simd_emitter(profile) -> SIMDEmitterBase:
     from timber.accel.accel.simd.avx2 import AVX2Emitter
     from timber.accel.accel.simd.avx512 import AVX512Emitter
     from timber.accel.accel.simd.neon import NEONEmitter
-    from timber.accel.accel.simd.sve import SVEEmitter
     from timber.accel.accel.simd.rvv import RVVEmitter
+    from timber.accel.accel.simd.sve import SVEEmitter
 
     isa = profile.simd_config.get("instruction_set", "")
     mapping = {

@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from timber.ir.model import (
+    GPRStage,
+    ImputerStage,
+    KNNStage,
+    LinearStage,
+    NaiveBayesStage,
+    NormalizerStage,
+    ScalerStage,
+    SVMStage,
     TimberIR,
     TreeEnsembleStage,
-    LinearStage,
-    SVMStage,
-    KNNStage,
-    GPRStage,
-    NaiveBayesStage,
-    ScalerStage,
-    NormalizerStage,
-    ImputerStage,
 )
-
 
 DISCLAIMER = (
     "ADVISORY ONLY — WCET estimates use a simplified analytical model that does "

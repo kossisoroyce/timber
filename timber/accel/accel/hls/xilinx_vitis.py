@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from timber.accel.accel.hls.base import HLSEmitterBase
 from timber.codegen.c99 import TargetSpec
 from timber.ir.model import TimberIR, TreeEnsembleStage
-
-from timber.accel.accel.hls.base import HLSEmitterBase
 
 
 class XilinxVitisEmitter(HLSEmitterBase):
@@ -178,16 +177,16 @@ class XilinxVitisEmitter(HLSEmitterBase):
             "",
             "    /* Partition the feature and result arrays for parallel access. */",
             "    float features[N_FEATURES];",
-            f"#pragma HLS ARRAY_PARTITION variable=features complete dim=1",
+            "#pragma HLS ARRAY_PARTITION variable=features complete dim=1",
             "",
             "    float result[N_CLASSES];",
-            f"#pragma HLS ARRAY_PARTITION variable=result complete dim=1",
+            "#pragma HLS ARRAY_PARTITION variable=result complete dim=1",
             "",
             "    /* Partition tree data for concurrent reads. */",
-            f"#pragma HLS ARRAY_PARTITION variable=tree_feature_idx cyclic factor=4 dim=1",
-            f"#pragma HLS ARRAY_PARTITION variable=tree_threshold   cyclic factor=4 dim=1",
-            f"#pragma HLS ARRAY_PARTITION variable=tree_is_leaf     cyclic factor=4 dim=1",
-            f"#pragma HLS ARRAY_PARTITION variable=tree_leaf_value  cyclic factor=4 dim=1",
+            "#pragma HLS ARRAY_PARTITION variable=tree_feature_idx cyclic factor=4 dim=1",
+            "#pragma HLS ARRAY_PARTITION variable=tree_threshold   cyclic factor=4 dim=1",
+            "#pragma HLS ARRAY_PARTITION variable=tree_is_leaf     cyclic factor=4 dim=1",
+            "#pragma HLS ARRAY_PARTITION variable=tree_leaf_value  cyclic factor=4 dim=1",
             "",
             "    SAMPLE_LOOP:",
             "    for (int s = 0; s < n_samples; ++s) {",
@@ -272,7 +271,7 @@ class XilinxVitisEmitter(HLSEmitterBase):
             "add_files model.c -cflags \"-std=c++14\"",
             "add_files -tb testbench.cpp -cflags \"-std=c++14\"",
             "",
-            f"open_solution \"solution1\" -flow_target vivado",
+            "open_solution \"solution1\" -flow_target vivado",
             f"set_part {{{self.part}}}",
             f"create_clock -period {{1000.0 / {self.clock_mhz}}}ns -name default",
             "",

@@ -9,16 +9,14 @@ Transforms the IR to guarantee deterministic, reproducible inference:
 
 from __future__ import annotations
 
-import math
-import struct
 import warnings
 from typing import Any
 
 from timber.ir.model import (
     TimberIR,
+    Tree,
     TreeEnsembleStage,
     TreeNode,
-    Tree,
 )
 
 DISCLAIMER = (

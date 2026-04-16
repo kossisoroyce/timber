@@ -9,13 +9,9 @@ Generates C code targeting STM32 families (F4/F7/H7/L4) using:
 
 from __future__ import annotations
 
-import re
-
+from timber.accel.accel.embedded.base import EmbeddedEmitterBase
 from timber.codegen.c99 import C99Output, TargetSpec
 from timber.ir.model import TimberIR
-
-from timber.accel.accel.embedded.base import EmbeddedEmitterBase
-
 
 # Map architecture strings to STM32 HAL header include names
 _HAL_HEADERS = {
@@ -108,7 +104,7 @@ class STM32Emitter(EmbeddedEmitterBase):
         lines = [
             f"/* --- STM32 Inference Timing ({tim}) --- */",
             "",
-            f"static volatile uint32_t _timber_timer_start;",
+            "static volatile uint32_t _timber_timer_start;",
             "",
             "static inline void timber_timing_start(void) {",
             f"    __HAL_TIM_SET_COUNTER(&{htim}, 0);",
@@ -239,7 +235,7 @@ class STM32Emitter(EmbeddedEmitterBase):
             "",
         ]
         if self._use_dma:
-            hints.insert(-1, f" * 7. Enable DMA (memory-to-memory) for bulk input transfer")
+            hints.insert(-1, " * 7. Enable DMA (memory-to-memory) for bulk input transfer")
         return "\n".join(hints) + model_h
 
     def _emit_stm32_cmake(self) -> str:
@@ -250,7 +246,7 @@ class STM32Emitter(EmbeddedEmitterBase):
             "cmake_minimum_required(VERSION 3.16)",
             "project(timber_model C)",
             "",
-            f"set(CMAKE_SYSTEM_NAME Generic)",
+            "set(CMAKE_SYSTEM_NAME Generic)",
             f"set(CMAKE_SYSTEM_PROCESSOR {self.target.arch})",
             f"set(CMAKE_C_COMPILER {prefix}gcc)",
             "",

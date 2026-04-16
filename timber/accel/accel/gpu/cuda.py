@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from timber.codegen.c99 import TargetSpec
-from timber.ir.model import TimberIR, TreeEnsembleStage, Tree, TreeNode
-
 from timber.accel.accel.gpu.base import GPUEmitterBase
+from timber.codegen.c99 import TargetSpec
+from timber.ir.model import TimberIR, TreeEnsembleStage
 
 
 class CUDAEmitter(GPUEmitterBase):
@@ -115,12 +114,12 @@ class CUDAEmitter(GPUEmitterBase):
             f"#define BASE_SCORE    {base_score}f",
             "",
             "/* ---- Flat tree arrays (device constant memory) ---- */",
-            f"__constant__ int    d_feature_idx[TOTAL_NODES];",
-            f"__constant__ float  d_threshold[TOTAL_NODES];",
-            f"__constant__ int    d_left[TOTAL_NODES];",
-            f"__constant__ int    d_right[TOTAL_NODES];",
-            f"__constant__ int    d_is_leaf[TOTAL_NODES];",
-            f"__constant__ float  d_leaf_value[TOTAL_NODES];",
+            "__constant__ int    d_feature_idx[TOTAL_NODES];",
+            "__constant__ float  d_threshold[TOTAL_NODES];",
+            "__constant__ int    d_left[TOTAL_NODES];",
+            "__constant__ int    d_right[TOTAL_NODES];",
+            "__constant__ int    d_is_leaf[TOTAL_NODES];",
+            "__constant__ float  d_leaf_value[TOTAL_NODES];",
             f"__constant__ int    d_tree_offsets[{n_trees + 1}];",
             "",
             "/* ---- Host-side tree data ---- */",

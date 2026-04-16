@@ -8,9 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from timber.ir.model import TimberIR
-
 from timber.accel.version import __version__
+from timber.ir.model import TimberIR
 
 GENERIC_DISCLAIMER = (
     "ADVISORY ONLY \u2014 All compliance analyses in this report use heuristic "
@@ -103,9 +102,8 @@ def generate_certification_report(
     Returns:
         CertificationReport instance
     """
-    from timber.codegen.c99 import C99Emitter
-
     from timber.accel.safety.certification.profiles import check_compliance, load_compliance_profile
+    from timber.codegen.c99 import C99Emitter
 
     # Generate baseline C code for analysis
     emitter = C99Emitter()
