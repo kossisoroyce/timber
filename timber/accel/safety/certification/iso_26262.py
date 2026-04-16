@@ -119,10 +119,10 @@ def estimate_diagnostic_coverage(code: str) -> dict[str, Any]:
     """
     lines = code.splitlines()
     total_functions = len(_FUNC_RE.findall(code))
-    null_checks = sum(1 for l in lines if re.search(r"if\s*\(.*==\s*NULL", l))
-    range_checks = sum(1 for l in lines if re.search(r"if\s*\(.*[<>]=?\s*\d+", l))
-    assertions = sum(1 for l in lines if re.search(r"\b(assert|ASSERT|CHECK)\b", l))
-    error_returns = sum(1 for l in lines if re.search(r"return\s+(-1|NULL|ERR|false)", l))
+    null_checks = sum(1 for ln in lines if re.search(r"if\s*\(.*==\s*NULL", ln))
+    range_checks = sum(1 for ln in lines if re.search(r"if\s*\(.*[<>]=?\s*\d+", ln))
+    assertions = sum(1 for ln in lines if re.search(r"\b(assert|ASSERT|CHECK)\b", ln))
+    error_returns = sum(1 for ln in lines if re.search(r"return\s+(-1|NULL|ERR|false)", ln))
 
     diagnostic_mechanisms = null_checks + range_checks + assertions + error_returns
     # Simple heuristic: coverage % based on mechanisms per function

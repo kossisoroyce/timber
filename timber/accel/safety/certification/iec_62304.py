@@ -86,10 +86,10 @@ def analyze_unit_verification(code: str) -> dict[str, Any]:
     lines = code.splitlines()
 
     input_validations = sum(
-        1 for l in lines if re.search(r"if\s*\(.*[<>!=]=?\s*", l)
+        1 for ln in lines if re.search(r"if\s*\(.*[<>!=]=?\s*", ln)
     )
     doc_comments = sum(
-        1 for l in lines if l.strip().startswith("/**") or l.strip().startswith("///")
+        1 for ln in lines if ln.strip().startswith("/**") or ln.strip().startswith("///")
     )
     static_functions = len(re.findall(r"\bstatic\s+\w+\s+\w+\s*\(", code))
 
