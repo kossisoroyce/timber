@@ -1,0 +1,13 @@
+[target]
+name = "metal_apple_m1"
+arch = "aarch64"
+os = "darwin"
+precision = "float32"
+
+[gpu]
+backend = "metal"
+metal_language_version = "2.4"
+max_threads_per_threadgroup = 1024
+threadgroup_memory_bytes = 32768
+compiler = "xcrun -sdk macosx metal"
+compiler_flags = "-std=metal2.4 -O2"

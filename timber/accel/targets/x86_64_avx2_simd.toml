@@ -1,0 +1,13 @@
+[target]
+name = "x86_64_avx2_simd"
+arch = "x86_64"
+os = "linux"
+abi = "systemv"
+precision = "float32"
+features = ["avx2", "fma"]
+
+[simd]
+instruction_set = "avx2"
+vector_width = 256
+align = 32
+compiler_flags = "-mavx2 -mfma"

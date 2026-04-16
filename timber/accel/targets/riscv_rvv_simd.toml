@@ -1,0 +1,13 @@
+[target]
+name = "riscv_rvv_simd"
+arch = "riscv64"
+os = "linux"
+abi = "lp64d"
+precision = "float32"
+features = ["rvv"]
+
+[simd]
+instruction_set = "rvv"
+vector_width = "scalable"
+align = 16
+compiler_flags = "-march=rv64gcv"

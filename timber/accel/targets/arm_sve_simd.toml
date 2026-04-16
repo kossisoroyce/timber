@@ -1,0 +1,13 @@
+[target]
+name = "arm_sve_simd"
+arch = "aarch64"
+os = "linux"
+abi = "aapcs"
+precision = "float32"
+features = ["sve"]
+
+[simd]
+instruction_set = "sve"
+vector_width = "scalable"
+align = 16
+compiler_flags = "-march=armv8.2-a+sve"

@@ -1,0 +1,24 @@
+[profile]
+name = "ISO 26262"
+standard = "ISO 26262"
+description = "Road vehicles — Functional safety for automotive electrical and electronic systems"
+level = "ASIL-D"
+
+[rules]
+no_dynamic_allocation = true
+no_recursion = true
+no_unbounded_loops = true
+single_entry_exit = true
+no_pointer_arithmetic = true
+no_floating_point_comparison = false
+max_function_complexity = 25
+max_nesting_depth = 5
+require_wcet_analysis = true
+require_traceability = true
+require_coverage_mcdc = true
+require_coverage_branch = true
+require_static_analysis = true
+require_defensive_programming = true
+no_implicit_type_conversion = true
+max_function_length = 200
+max_parameters = 6

@@ -1,0 +1,26 @@
+[profile]
+name = "IEC 62304"
+standard = "IEC 62304"
+description = "Medical device software — Software life cycle processes"
+level = "Class C"
+
+[rules]
+no_dynamic_allocation = true
+no_recursion = true
+no_unbounded_loops = true
+single_entry_exit = false
+no_pointer_arithmetic = true
+no_floating_point_comparison = false
+max_function_complexity = 30
+max_nesting_depth = 5
+require_wcet_analysis = false
+require_traceability = true
+require_coverage_mcdc = false
+require_coverage_branch = true
+require_coverage_statement = true
+require_static_analysis = true
+require_risk_analysis = true
+require_anomaly_tracking = true
+require_unit_testing = true
+max_function_length = 250
+max_parameters = 7

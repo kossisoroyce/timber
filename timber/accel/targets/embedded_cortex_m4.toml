@@ -1,0 +1,17 @@
+[target]
+name = "embedded_cortex_m4"
+arch = "arm"
+os = "none"
+abi = "eabi"
+precision = "float32"
+embedded = true
+cross_prefix = "arm-none-eabi-"
+cpu_flags = "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16"
+extra_flags = "--specs=nosys.specs"
+
+[embedded]
+platform = "cortex_m"
+heap = false
+stack_size = 4096
+flash_size = 262144
+ram_size = 65536

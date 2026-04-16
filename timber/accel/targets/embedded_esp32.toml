@@ -1,0 +1,17 @@
+[target]
+name = "embedded_esp32"
+arch = "xtensa"
+os = "none"
+abi = "eabi"
+precision = "float32"
+embedded = true
+cross_prefix = "xtensa-esp32-elf-"
+cpu_flags = "-mlongcalls"
+extra_flags = "--specs=nosys.specs"
+
+[embedded]
+platform = "esp32"
+heap = false
+stack_size = 8192
+flash_size = 4194304
+ram_size = 327680

@@ -1,0 +1,13 @@
+[target]
+name = "x86_64_avx512_simd"
+arch = "x86_64"
+os = "linux"
+abi = "systemv"
+precision = "float32"
+features = ["avx512f", "avx512bw", "avx512dq", "avx512vl", "fma"]
+
+[simd]
+instruction_set = "avx512"
+vector_width = 512
+align = 64
+compiler_flags = "-mavx512f -mavx512bw"

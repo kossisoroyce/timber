@@ -1,0 +1,13 @@
+[target]
+name = "opencl_generic"
+arch = "x86_64"
+os = "linux"
+precision = "float32"
+
+[gpu]
+backend = "opencl"
+opencl_version = "2.0"
+work_group_size = 256
+max_compute_units = 0
+compiler = "clang"
+compiler_flags = "-cl-std=CL2.0 -cl-fast-relaxed-math"

@@ -1,0 +1,12 @@
+[target]
+name = "hls_intel"
+arch = "fpga"
+os = "none"
+precision = "float32"
+
+[hls]
+vendor = "intel"
+tool = "intel_hls"
+part = "10AX115S2F45I1SG"
+clock_period_ns = 5.0
+pipeline_ii = 1

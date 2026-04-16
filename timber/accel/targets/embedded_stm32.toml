@@ -1,0 +1,17 @@
+[target]
+name = "embedded_stm32"
+arch = "arm"
+os = "none"
+abi = "eabi"
+precision = "float32"
+embedded = true
+cross_prefix = "arm-none-eabi-"
+cpu_flags = "-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-sp-d16"
+extra_flags = "--specs=nosys.specs"
+
+[embedded]
+platform = "stm32"
+heap = false
+stack_size = 8192
+flash_size = 1048576
+ram_size = 524288

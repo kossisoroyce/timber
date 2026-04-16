@@ -1,0 +1,18 @@
+[profile]
+name = "DO-178C"
+standard = "DO-178C"
+description = "Software Considerations in Airborne Systems and Equipment Certification"
+level = "A"
+
+[rules]
+no_dynamic_allocation = true
+no_recursion = true
+no_unbounded_loops = true
+single_entry_exit = true
+no_pointer_arithmetic = true
+no_floating_point_comparison = true
+max_function_complexity = 20
+max_nesting_depth = 4
+require_wcet_analysis = true
+require_traceability = true
+require_coverage_mcdc = true

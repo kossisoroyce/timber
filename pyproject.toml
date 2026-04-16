@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "timber-compiler"
 version = "0.5.0"
-description = "Classical ML Inference Compiler — compiles XGBoost, LightGBM, sklearn, CatBoost, and ONNX models to optimized C99 / LLVM IR / WASM inference artifacts. Supports tree ensembles, SVMs, Naive Bayes, GPR, k-NN, Isolation Forest, and robot forward kinematics."
+description = "Classical ML Inference Compiler — compiles XGBoost, LightGBM, sklearn, CatBoost, and ONNX models to optimized C99 / LLVM IR / WASM inference artifacts. Includes hardware acceleration (AVX2/NEON/CUDA), safety certification (DO-178C/ISO-26262), supply-chain signing, and embedded/ROS2/PX4 deployment."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
@@ -34,6 +34,7 @@ dependencies = [
     "numpy>=1.24",
     "rich>=13.0",
     "requests>=2.28",
+    "cryptography>=41.0",
     "tomli>=2.0;python_version<'3.11'",
 ]
 
@@ -63,6 +64,15 @@ full = [
 privacy = [
     "numpy>=1.24",
 ]
+accel = [
+    "cryptography>=41.0",
+]
+gpu = [
+    "pycuda>=2022.1",
+]
+ros = [
+    "rclpy>=3.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -77,6 +87,7 @@ dev = [
 
 [project.scripts]
 timber = "timber.cli:main"
+timber-accel = "timber.accel.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -84,6 +95,10 @@ include = ["timber*"]
 
 [tool.setuptools.package-data]
 timber = ["py.typed"]
+"timber.accel" = [
+    "targets/*.toml",
+    "compliance_profiles/*.toml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

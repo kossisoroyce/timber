@@ -7,6 +7,26 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`timber.accel` — TimberAccelerate merged into core** (previously a separate `timber-accelerate` package, now ships with every `pip install timber-compiler` install):
+  - **SIMD codegen** — `AVX2Emitter`, `AVX512Emitter`, `NEONEmitter`, `SVEEmitter`, `RVVEmitter`; injects vectorised `timber_infer_simd()` path into generated C; delegates `timber_infer_single` and `timber_infer` to SIMD variant at link time
+  - **GPU codegen** — CUDA, Metal, OpenCL emitters
+  - **FPGA HLS** — Xilinx Vitis HLS, Intel FPGA SDK emitters
+  - **Embedded** — Cortex-M, ESP32, STM32 emitters (no-heap, static buffers, cross-compile prefix support)
+  - **WCET analysis** — `analyze_wcet(ir, arch, clock_mhz, safety_margin)` for Cortex-M4/M7, x86_64, AArch64, RISC-V64; per-stage breakdown with advisory disclaimer
+  - **Safety transforms** — `deterministic_pass` and `constant_time_pass` IR transforms
+  - **Certification reports** — DO-178C, ISO 26262, IEC 62304 compliance report generation
+  - **Supply chain** — Ed25519 artifact signing/verification, AES-256-GCM encryption/decryption, TPM integration hooks
+  - **Deployment** — air-gapped bundle creator, C++ gRPC server generator, ROS 2 node generator, PX4 autopilot module generator, sensor preprocessing (radar, RF, telemetry)
+  - **18 target profiles** (TOML) bundled at `timber/accel/targets/`: AVX2, AVX512, NEON, SVE, RVV, CUDA SM75/SM86, Metal Apple M1, OpenCL generic, Cortex-M4/M7/ESP32/STM32, HLS Xilinx/Intel
+  - **3 compliance profiles** (TOML) bundled at `timber/accel/compliance_profiles/`: DO-178C, ISO 26262, IEC 62304
+  - **`timber-accel` CLI** — 9 commands: `compile`, `wcet`, `certify`, `sign`, `verify`, `encrypt`, `decrypt`, `bundle`, `serve-native`
+
+---
+
 ## [0.5.0] — 2026-03-13
 
 ### Added

@@ -1,0 +1,12 @@
+[target]
+name = "hls_xilinx"
+arch = "fpga"
+os = "none"
+precision = "float32"
+
+[hls]
+vendor = "xilinx"
+tool = "vitis_hls"
+part = "xcu250-figd2104-2L-e"
+clock_period_ns = 10.0
+pipeline_ii = 1

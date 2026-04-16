@@ -1,0 +1,13 @@
+[target]
+name = "cuda_sm75"
+arch = "x86_64"
+os = "linux"
+precision = "float32"
+
+[gpu]
+backend = "cuda"
+compute_capability = "sm_75"
+max_threads_per_block = 1024
+shared_memory_bytes = 65536
+compiler = "nvcc"
+compiler_flags = "-arch=sm_75 -O3"
