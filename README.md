@@ -8,7 +8,6 @@
   <a href="https://github.com/kossisoroyce/timber/actions/workflows/ci.yml"><img src="https://github.com/kossisoroyce/timber/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://pypi.org/project/timber-compiler/"><img src="https://img.shields.io/pypi/v/timber-compiler.svg" alt="PyPI version"></a>
   <a href="https://pypi.org/project/timber-compiler/"><img src="https://img.shields.io/pypi/pyversions/timber-compiler.svg" alt="Python versions"></a>
-  <a href="https://pypi.org/project/timber-compiler/"><img src="https://img.shields.io/pypi/dm/timber-compiler.svg" alt="Monthly downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache-2.0"></a>
   <a href="https://codecov.io/gh/kossisoroyce/timber"><img src="https://codecov.io/gh/kossisoroyce/timber/branch/main/graph/badge.svg" alt="Coverage"></a>
 </p>
